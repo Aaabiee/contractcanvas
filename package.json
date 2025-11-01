@@ -1,0 +1,33 @@
+{
+  "name": "contractcanvas",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "commonjs",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "config:env": "node ./scripts/config-to-env.mjs",
+
+    "prisma:generate": "npm run config:env && npm exec -w apps/api prisma -- generate --schema prisma/schema.prisma",
+    "prisma:migrate":  "npm run config:env && npm exec -w apps/api prisma -- migrate dev --name init --schema prisma/schema.prisma",
+    "prisma:push":     "npm run config:env && npm exec -w apps/api prisma -- db push --schema prisma/schema.prisma",
+    "prisma:studio":   "npm run config:env && npm exec -w apps/api prisma -- studio --schema prisma/schema.prisma",
+
+    "up": "npm run config:env && docker compose -f ./infra/docker-compose.yml --env-file ./infra/.env up -d",
+    "down:keep": "docker compose -f ./infra/docker-compose.yml --env-file ./infra/.env down",
+    "down": "docker compose -f ./infra/docker-compose.yml --env-file ./infra/.env down -v --remove-orphans",
+
+    "dev:api": "npm run -w apps/api dev",
+    "dev:web": "npm run -w apps/web start",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

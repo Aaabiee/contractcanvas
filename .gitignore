@@ -1,4 +1,16 @@
 node_modules/
+api/node_modules
+web/node_modules
 dist/
 .angular/
+
+# Generated env files
+infra/.env
+api/prisma/.env
+
+# Local config
+config.json
+
+# Local environ
 .env
+apps/web/.vscode
