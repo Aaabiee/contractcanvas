@@ -1,0 +1,244 @@
+<!-- apps/web/src/app/pages/register/register.component.html -->
+<div class="register-wrapper">
+  <mat-card class="register-card">
+    <mat-card-header>
+      <div class="logo-container" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             class="logo-icon">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+      </div>
+      <mat-card-title>{{ orgMode === 'create' ? 'Create an Account' : 'Join an Organization' }}</mat-card-title>
+      <mat-card-subtitle>Get started with ContractCanvas</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <form (ngSubmit)="onRegister()" #registerForm="ngForm" novalidate>
+        <!-- Name Row -->
+        <div class="row two-col">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>First name</mat-label>
+            <input
+              matInput
+              type="text"
+              name="firstName"
+              [(ngModel)]="firstName"
+              required
+              autocomplete="given-name"
+              placeholder="Jane" />
+            <mat-icon matPrefix>person</mat-icon>
+            <mat-error *ngIf="registerForm.controls['firstName']?.hasError('required')">
+              First name is required
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Last name</mat-label>
+            <input
+              matInput
+              type="text"
+              name="lastName"
+              [(ngModel)]="lastName"
+              required
+              autocomplete="family-name"
+              placeholder="Doe" />
+            <mat-icon matPrefix>person</mat-icon>
+            <mat-error *ngIf="registerForm.controls['lastName']?.hasError('required')">
+              Last name is required
+            </mat-error>
+          </mat-form-field>
+        </div>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Display name (optional)</mat-label>
+          <input
+            matInput
+            type="text"
+            name="displayName"
+            [(ngModel)]="displayName"
+            placeholder="Jane Doe" />
+          <mat-icon matPrefix>badge</mat-icon>
+        </mat-form-field>
+
+        <!-- Email -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Email</mat-label>
+          <input
+            matInput
+            type="email"
+            name="email"
+            [(ngModel)]="email"
+            required
+            email
+            autocomplete="email"
+            placeholder="you@example.com" />
+          <mat-icon matPrefix>alternate_email</mat-icon>
+          <mat-error *ngIf="registerForm.controls['email']?.hasError('required')">
+            Email is required
+          </mat-error>
+          <mat-error *ngIf="registerForm.controls['email']?.hasError('email')">
+            Please enter a valid email address
+          </mat-error>
+        </mat-form-field>
+
+        <!-- Passwords -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Password</mat-label>
+          <input
+            matInput
+            [type]="hidePassword ? 'password' : 'text'"
+            name="password"
+            [(ngModel)]="password"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            placeholder="At least 8 characters" />
+          <mat-icon matPrefix>lock</mat-icon>
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="hidePassword = !hidePassword"
+            [attr.aria-label]="hidePassword ? 'Show password' : 'Hide password'"
+            [attr.aria-pressed]="!hidePassword">
+            <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+          </button>
+          <mat-hint>Use upper, lower, number, and symbol for best security</mat-hint>
+          <mat-error *ngIf="registerForm.controls['password']?.hasError('required')">
+            Password is required
+          </mat-error>
+          <mat-error *ngIf="registerForm.controls['password']?.hasError('minlength')">
+            Password must be at least 8 characters
+          </mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Confirm password</mat-label>
+          <input
+            matInput
+            [type]="hideConfirm ? 'password' : 'text'"
+            name="confirmPassword"
+            [(ngModel)]="confirmPassword"
+            required
+            autocomplete="new-password"
+            placeholder="Repeat your password" />
+          <mat-icon matPrefix>verified_user</mat-icon>
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="hideConfirm = !hideConfirm"
+            [attr.aria-label]="hideConfirm ? 'Show confirm password' : 'Hide confirm password'"
+            [attr.aria-pressed]="!hideConfirm">
+            <mat-icon>{{ hideConfirm ? 'visibility_off' : 'visibility' }}</mat-icon>
+          </button>
+          <mat-error *ngIf="confirmPassword && confirmPassword !== password">
+            Passwords do not match
+          </mat-error>
+        </mat-form-field>
+
+        <!-- Role -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Account role</mat-label>
+          <mat-select [(ngModel)]="role" name="role" required>
+            <mat-option *ngFor="let r of roles" [value]="r">{{ r }}</mat-option>
+          </mat-select>
+          <mat-icon matPrefix>workspace_premium</mat-icon>
+          <mat-error *ngIf="registerForm.controls['role']?.hasError('required')">
+            Please select a role
+          </mat-error>
+        </mat-form-field>
+
+        <!-- Org mode -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Organization mode</mat-label>
+          <mat-select [(ngModel)]="orgMode" name="orgMode" required>
+            <mat-option value="create">Create new organization</mat-option>
+            <mat-option value="join">Join with an invite</mat-option>
+          </mat-select>
+          <mat-icon matPrefix>diversity_3</mat-icon>
+        </mat-form-field>
+
+        <!-- Create org fields -->
+        <div *ngIf="orgMode === 'create'">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Organization name</mat-label>
+            <input
+              matInput
+              type="text"
+              name="organizationName"
+              [(ngModel)]="organizationName"
+              required
+              placeholder="ACME Legal" />
+            <mat-icon matPrefix>business</mat-icon>
+            <mat-error *ngIf="registerForm.controls['organizationName']?.hasError('required')">
+              Organization name is required
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Organization slug</mat-label>
+            <input
+              matInput
+              type="text"
+              name="organizationSlug"
+              [(ngModel)]="organizationSlug"
+              placeholder="acme-legal" />
+            <mat-icon matPrefix>link</mat-icon>
+            <mat-hint>Lowercase, numbers, and hyphens only</mat-hint>
+          </mat-form-field>
+        </div>
+
+        <!-- Join org field -->
+        <div *ngIf="orgMode === 'join'">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Invite token</mat-label>
+            <input
+              matInput
+              type="text"
+              name="inviteToken"
+              [(ngModel)]="inviteToken"
+              required
+              placeholder="Paste your invite token" />
+            <mat-icon matPrefix>key</mat-icon>
+            <mat-error *ngIf="registerForm.controls['inviteToken']?.hasError('required')">
+              Invite token is required to join
+            </mat-error>
+          </mat-form-field>
+        </div>
+
+        <!-- Terms -->
+        <div class="tos-row">
+          <mat-checkbox [(ngModel)]="acceptTerms" name="acceptTerms" required>
+            I agree to the <a routerLink="/terms" class="link">Terms of Service</a> and
+            <a routerLink="/privacy" class="link">Privacy Policy</a>
+          </mat-checkbox>
+        </div>
+
+        <!-- Error -->
+        <div *ngIf="errorMessage" class="register-error-message" role="alert">
+          {{ errorMessage }}
+        </div>
+
+        <!-- Submit -->
+        <button
+          mat-raised-button
+          color="primary"
+          class="full-width register-button"
+          type="submit"
+          [disabled]="!registerForm.form.valid || !acceptTerms || (confirmPassword && confirmPassword !== password)">
+          {{ orgMode === 'create' ? 'Create account' : 'Join organization' }}
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <div class="login-link-container">
+    Already have an account? <a routerLink="/login" class="login-link">Sign in</a>
+  </div>
+</div>

@@ -1,0 +1,30 @@
+<div class="matter-detail-container">
+  <a routerLink="/matters" class="back-link">&larr; Back to Matters</a>
+
+  <div *ngIf="error" class="error-message">{{ error }}</div>
+
+  <!-- Use async pipe to subscribe to the matter$ observable -->
+  <ng-container *ngIf="matter$ | async as matter; else loading">
+    <div *ngIf="matter; else notFound">
+      <h2>{{ matter.title }}</h2>
+      <span class="status-badge">{{ matter.status }}</span>
+      <p class="description">{{ matter.description || 'No description provided.' }}</p>
+
+      <!-- Placeholder for where contracts/documents would go -->
+      <section class="related-items">
+        <h3>Related Contracts</h3>
+        <p>(List of contracts for this matter)</p>
+        <h3>Related Documents</h3>
+        <p>(List of documents for this matter)</p>
+      </section>
+    </div>
+  </ng-container>
+  
+  <ng-template #notFound>
+    <p *ngIf="!error">Matter not found.</p>
+  </ng-template>
+
+  <ng-template #loading>
+    <p *ngIf="!error">Loading matter details...</p>
+  </ng-template>
+</div>

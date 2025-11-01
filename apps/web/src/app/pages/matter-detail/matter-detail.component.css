@@ -1,0 +1,29 @@
+/* Styles for matter-detail component */
+.matter-detail-container {
+  padding: 20px;
+}
+.back-link {
+  color: #007bff;
+  text-decoration: none;
+  margin-bottom: 15px;
+  display: inline-block;
+}
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #eee;
+  font-size: 0.9em;
+  text-transform: capitalize;
+}
+.description {
+  margin-top: 15px;
+}
+.related-items {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+.error-message {
+  color: red;
+}

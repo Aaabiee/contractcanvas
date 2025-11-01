@@ -5,8 +5,8 @@ dist/
 .angular/
 
 # Generated env files
+./api
 infra/.env
-api/prisma/.env
 
 # Local config
 config.json
@@ -14,3 +14,5 @@ config.json
 # Local environ
 .env
 apps/web/.vscode
+apps/api/prisma/.env
+apps/api/prisma/migrations

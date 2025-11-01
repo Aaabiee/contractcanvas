@@ -1,0 +1,26 @@
+# infra/docker-compose.yml
+services:
+  db:
+    image: postgres:16-alpine # Changed from 15 to 16 based on your snippet
+    container_name: ${POSTGRES_CONTAINER_NAME:-contractcanvas-postgres}
+    restart: unless-stopped # Changed from always
+    env_file:
+      - .env # Loads variables from infra/.env
+    environment:
+      # These are now set via env_file, but can be left for clarity/override
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Map host port (from .env, defaults 5433) to container 5432
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20 # Increased retries
+
+volumes:
+  pgdata: {}

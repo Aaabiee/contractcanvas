@@ -1,0 +1,15 @@
+<h2 mat-dialog-title class="dialog-title">
+  <mat-icon aria-hidden="true">logout</mat-icon>
+  {{ title }}
+</h2>
+
+<div mat-dialog-content class="dialog-content">
+  <p>{{ message }}</p>
+</div>
+
+<div mat-dialog-actions align="end" class="dialog-actions">
+  <button mat-button (click)="cancel()">{{ cancelLabel }}</button>
+  <button mat-flat-button color="primary" (click)="confirm()">
+    {{ logoutLabel }}
+  </button>
+</div>

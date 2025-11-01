@@ -1,0 +1,32 @@
+/* Styles for matter-list component */
+.matter-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.matter-item a {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 8px;
+  border-bottom: 1px solid #eee;
+  text-decoration: none;
+  color: #333;
+}
+.matter-item a:hover {
+  background-color: #f9f9f9;
+}
+.matter-title {
+  font-weight: 600;
+}
+.matter-status {
+  font-size: 0.9em;
+  color: #666;
+  text-transform: capitalize;
+}
+.error-message {
+  color: red;
+}
+.empty-list {
+  padding: 12px 8px;
+  color: #777;
+}

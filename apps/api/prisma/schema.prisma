@@ -1,0 +1,593 @@
+// apps/api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== Enums =====================
+enum Role {
+  ADMIN
+  LAWYER
+  PARALEGAL
+  CLIENT
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MatterStatus {
+  OPEN
+  ON_HOLD
+  CLOSED
+}
+
+enum ContractStatus {
+  DRAFT
+  NEGOTIATION
+  PENDING_SIGNATURE
+  EXECUTED
+  ARCHIVED
+}
+
+enum SignatureStatus {
+  CREATED
+  SENT
+  VIEWED
+  SIGNED
+  COMPLETED
+  DECLINED
+  VOIDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  VOID
+}
+
+enum ReminderType {
+  DEADLINE
+  RENEWAL
+  PAYMENT
+}
+
+enum DocumentKind {
+  UPLOADED
+  GENERATED
+  SIGNED_PDF
+  ATTACHMENT
+}
+
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum NotificationType {
+  SYSTEM
+  MENTION
+  REMINDER
+  BILLING
+}
+
+// ===================== Core tenancy & users =====================
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  members            OrganizationMember[]
+  matters            Matter[]
+  clauses            Clause[]
+  apiKeys            ApiKey[]
+  webhooks           WebhookEndpoint[]
+  contracts          Contract[]
+  tags               Tag[]
+  documents          Document[]
+  comments           Comment[]
+  signatureEnvelopes SignatureEnvelope[]
+  reminders          Reminder[]
+  tasks              Task[]
+  billingProfiles    BillingProfile[]
+  invoices           Invoice[]
+  payments           Payment[]
+  shareLinks         ShareLink[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+
+  @@index([deletedAt])
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrgRole  @default(MEMBER)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model User {
+  id               String               @id @default(cuid())
+  email            String               @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  name             String?
+  role             Role                 @default(CLIENT)
+  avatarUrl        String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  deletedAt        DateTime?
+  organizations    OrganizationMember[]
+  ownedMatters     Matter[]             @relation("MatterOwner")
+  matterLinks      MatterParticipant[]
+  comments         Comment[]
+  notifications    Notification[]
+  sessions         Session[]
+  billingProfiles  BillingProfile[]
+  authoredVersions ContractVersion[]
+  mentions         Mention[]
+  remindersCreated Reminder[]           @relation("ReminderCreator")
+  assignedTasks    Task[]               @relation("TaskAssignee")
+  auditActorLogs   AuditLog[]           @relation("AuditActor")
+
+  @@index([deletedAt])
+  @@index([lastName, firstName])
+  @@map("users") // your existing table name
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  ip        String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ===================== Matters, Contracts, Versions =====================
+model Matter {
+  id             String       @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  status         MatterStatus @default(OPEN)
+  ownerId        String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User                @relation("MatterOwner", fields: [ownerId], references: [id])
+  participants MatterParticipant[]
+  documents    Document[]
+  contracts    Contract[]
+  tasks        Task[]
+  comments     Comment[]
+
+  @@index([organizationId])
+  @@index([status]) // Indexing enums is fine, though effectiveness varies
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+model MatterParticipant {
+  id        String   @id @default(cuid())
+  matterId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  matter Matter @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matterId, userId])
+  @@index([userId])
+}
+
+model Contract {
+  id               String         @id @default(cuid())
+  organizationId   String
+  matterId         String
+  title            String
+  status           ContractStatus @default(DRAFT)
+  currentVersionId String?        @unique
+  valueCents       Int?
+  currency         String         @default("usd")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  matter             Matter              @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  versions           ContractVersion[]
+  reminders          Reminder[]
+  invoices           Invoice[]
+  signatureEnvelopes SignatureEnvelope[]
+  comments           Comment[]
+
+  currentVersion ContractVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  @@index([organizationId])
+  @@index([matterId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model ContractVersion {
+  id         String   @id @default(cuid())
+  contractId String? // Made optional based on previous schema? Ensure this is intended. Usually required.
+  number     Int
+  title      String?
+  authorId   String? // Made optional based on previous schema? Usually required.
+  storageKey String
+  mimeType   String?
+  sizeBytes  Int?
+  diffJson   Json?
+  aiContext  Json?
+  createdAt  DateTime @default(now())
+
+  contract Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull) // SetNull if author deleted
+
+  comments  Comment[]
+  tags      ContractVersionTag[]
+  documents Document[]
+
+  currentOf Contract? @relation("CurrentVersion") // Back-relation for the 1-to-1
+
+  @@unique([contractId, number])
+  @@index([authorId])
+}
+
+model Tag {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versionLinks ContractVersionTag[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model ContractVersionTag {
+  id                String @id @default(cuid())
+  contractVersionId String
+  tagId             String
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  tag             Tag             @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contractVersionId, tagId])
+}
+
+// ===================== Clause Library =====================
+model Clause {
+  id             String   @id @default(cuid())
+  organizationId String? // Optional if it can be a public/global clause
+  title          String
+  bodyMd         String
+  tags           String[]
+  isPublic       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([isPublic])
+}
+
+// ===================== Documents & comments =====================
+model Document {
+  id             String         @id @default(cuid())
+  organizationId String
+  matterId       String
+  versionId      String? // Link to a specific ContractVersion
+  filename       String
+  storageKey     String // e.g., S3 object key
+  mimeType       String
+  sizeBytes      Int
+  kind           DocumentKind   @default(UPLOADED)
+  status         DocumentStatus @default(ACTIVE)
+  sha256         String? // Optional checksum
+  createdAt      DateTime       @default(now())
+  deletedAt      DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  matter       Matter           @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  version      ContractVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  comments Comment[]
+
+  @@index([organizationId])
+  @@index([matterId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model Comment {
+  id                String    @id @default(cuid())
+  organizationId    String
+  authorId          String? // Optional if system comments allowed, otherwise required & SetNull
+  matterId          String?
+  contractId        String?
+  contractVersionId String?
+  documentId        String?
+  bodyMd            String
+  createdAt         DateTime  @default(now())
+  editedAt          DateTime?
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author          User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  matter          Matter?          @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  contract        Contract?        @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  contractVersion ContractVersion? @relation(fields: [contractVersionId], references: [id], onDelete: SetNull)
+  document        Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  mentions        Mention[]
+
+  @@index([organizationId])
+  @@index([authorId])
+  @@index([contractId])
+  @@index([contractVersionId])
+  @@index([documentId])
+}
+
+model Mention {
+  id        String @id @default(cuid())
+  commentId String
+  userId    String
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+}
+
+// ===================== E-sign =====================
+model SignatureEnvelope {
+  id             String          @id @default(cuid())
+  organizationId String
+  contractId     String
+  provider       String // e.g., "docusign", "hellosign"
+  providerId     String          @unique // ID from the e-sign service
+  status         SignatureStatus @default(CREATED)
+  recipients     Json? // Store array of { email, name, role, status }
+  auditTrailUrl  String? // Link to provider's audit trail PDF
+  metadata       Json? // Any extra provider metadata
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([contractId])
+  @@index([status])
+}
+
+// ===================== Reminders & Tasks =====================
+model Reminder {
+  id             String       @id @default(cuid())
+  organizationId String
+  contractId     String
+  type           ReminderType
+  dueAt          DateTime
+  sentAt         DateTime? // Track when the notification was sent
+  createdById    String?
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("ReminderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([contractId])
+  @@index([dueAt])
+}
+
+model Task {
+  id             String    @id @default(cuid())
+  organizationId String
+  matterId       String
+  title          String
+  description    String?
+  dueAt          DateTime?
+  completedAt    DateTime?
+  assigneeId     String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  matter       Matter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  assignee     User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([matterId])
+  @@index([assigneeId])
+  @@index([dueAt])
+}
+
+// ===================== Billing =====================
+model BillingProfile {
+  id               String   @id @default(cuid())
+  organizationId   String
+  userId           String? // Link to user if B2C or specific payer
+  stripeCustomerId String? // Store Stripe customer ID
+  taxId            String?
+  addressJson      Json? // Store billing address
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  contractId     String
+  amountCents    Int
+  currency       String        @default("usd")
+  status         InvoiceStatus @default(DRAFT)
+  stripeId       String?       @unique // Stripe Invoice ID or PaymentIntent ID
+  issuedAt       DateTime      @default(now())
+  dueAt          DateTime?
+  paidAt         DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@index([organizationId])
+  @@index([contractId])
+  @@index([status])
+  @@index([dueAt])
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  organizationId  String
+  invoiceId       String
+  stripePaymentId String?  @unique // Stripe PaymentIntent ID or Charge ID
+  amountCents     Int
+  currency        String   @default("usd")
+  status          String   @default("succeeded") // Mirror Stripe status ('succeeded', 'pending', 'failed')
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([invoiceId])
+}
+
+// ===================== Sharing & webhooks =====================
+model ShareLink {
+  id             String    @id @default(cuid())
+  organizationId String
+  resourceType   String // e.g., "contract", "document"
+  resourceId     String
+  token          String    @unique // The unique token for the share URL
+  role           String // e.g., "viewer", "commenter", "editor"
+  expiresAt      DateTime? // Optional expiry
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([resourceType, resourceId])
+  @@index([expiresAt])
+}
+
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  hashedKey      String    @unique // Store a hash, not the raw key
+  // prefix         String   @unique // Store first few chars for identification
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([lastUsedAt])
+}
+
+model WebhookEndpoint {
+  id             String   @id @default(cuid())
+  organizationId String
+  provider       String // e.g., "stripe", "docusign", "hellosign"
+  url            String // The URL to send webhooks to
+  secret         String? // Store signing secret if applicable
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+
+  @@unique([organizationId, provider, url])
+  @@index([organizationId])
+}
+
+model WebhookDelivery {
+  id           String   @id @default(cuid())
+  endpointId   String // Link to the configured endpoint
+  eventType    String // e.g., "payment_intent.succeeded", "envelope.completed"
+  statusCode   Int? // HTTP status code of the delivery attempt
+  requestBody  Json? // Store the raw request body
+  responseBody Json? // Store the raw response body
+  deliveredAt  DateTime @default(now())
+  retryCount   Int      @default(0)
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId])
+  @@index([eventType])
+}
+
+// ===================== Notifications & audit =====================
+model Notification {
+  id             String           @id @default(cuid())
+  userId         String // Recipient user
+  organizationId String
+  type           NotificationType @default(SYSTEM)
+  title          String
+  body           String?
+  data           Json? // e.g., { "contractId": "...", "commentId": "..." }
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  actorId        String? // User who performed the action (null if system)
+  entity         String // e.g., "Contract", "Invoice", "User"
+  entityId       String // ID of the affected entity
+  action         String // e.g., "CREATE", "UPDATE", "DELETE", "LOGIN", "SIGN"
+  before         Json? // Snapshot of data before the change (optional)
+  after          Json? // Snapshot of data after the change (optional)
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

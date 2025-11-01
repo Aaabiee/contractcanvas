@@ -1,0 +1,56 @@
+/* apps/web/src/styles.scss */
+
+// 1. Import Angular Material theming functions
+// (This is the line that should be at the top)
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+$theme: mat.define-theme((
+  color: (theme-type: light),
+  typography: (brand-family: 'Roboto, sans-serif')
+));
+
+@include mat.all-component-themes($theme);
+
+// 2. Define your theme (This is the M3 setup you had before)
+html {
+  @include mat.theme((
+    color: (
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+    ),
+    typography: Roboto,
+    density: 0,
+  ));
+}
+
+// 3. Set up global body and font styles
+body {
+  // Use the theme's colors
+  color-scheme: light;
+  background-color: var(--mat-sys-surface); // Uses the theme's background
+  color: var(--mat-sys-on-surface);         // Uses the theme's text color
+  font: var(--mat-sys-body-medium);       // Uses the theme's font
+  margin: 0; // Reset user agent margin
+
+  // --- ADD THESE 3 LINES to center your login/register pages ---
+  display: grid;
+  place-items: center; // This centers <app-root> in the middle of the page
+  min-height: 100%;    // Ensure the body takes up at least the full screen height
+}
+
+/* 4. Make sure html and body fill the height */
+html, body {
+  height: 100%;
+}
+
+/* 5. Make app-root fill its container so that :host styles in
+      your components (like the login card) work correctly.
+*/
+app-root {
+  display: block;
+  height: 100%;
+  width: 100%;
+  display: grid; /* This helps the :host styles in your components fill the screen */
+}

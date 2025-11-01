@@ -1,0 +1,22 @@
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+
+  mat-icon {
+    font-size: 22px;
+    height: 22px;
+    width: 22px;
+  }
+}
+
+.dialog-content {
+  p {
+    margin: .25rem 0 0;
+    opacity: .9;
+  }
+}
+
+.dialog-actions {
+  padding-top: .5rem;
+}

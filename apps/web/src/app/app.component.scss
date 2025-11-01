@@ -1,0 +1,12 @@
+/* apps/web/src/app.component.css */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Use the Material theme's background color */
+body {
+  font-family: Roboto, "Helvetica Neue", sans-serif;
+  background-color: var(--mat-app-background-color, #fafafa);
+}
