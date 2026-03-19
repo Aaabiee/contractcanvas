@@ -39,7 +39,13 @@ import { MatRippleModule } from '@angular/material/core';
 import { MatTooltipDefaultOptions, MAT_TOOLTIP_DEFAULT_OPTIONS } from '@angular/material/tooltip';
 
 import { AuthService } from '../../services/auth.service';
+import { MatterService } from '../../services/matter.service';
+import { ContractService } from '../../services/contract.service';
+import { TaskService } from '../../services/task.service';
+import { NotificationService } from '../../services/notification.service';
 import { ConfirmLogoutDialogComponent } from './confirm-logout.dialog';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 type Role = 'ADMIN' | 'LAWYER' | 'PARALEGAL' | 'CLIENT';
 
@@ -88,11 +94,15 @@ export const tooltipOpts: MatTooltipDefaultOptions = {
   styleUrls: ['./dashboard.component.scss'],
 })
 export class DashboardComponent implements AfterViewInit {
-  public authService = inject(AuthService);
-  private router = inject(Router);
-  private snack = inject(MatSnackBar);
-  private dialog = inject(MatDialog);
-  private bp = inject(BreakpointObserver);
+  public authService      = inject(AuthService);
+  private router          = inject(Router);
+  private snack           = inject(MatSnackBar);
+  private dialog          = inject(MatDialog);
+  private bp              = inject(BreakpointObserver);
+  private matterService   = inject(MatterService);
+  private contractService = inject(ContractService);
+  private taskService     = inject(TaskService);
+  public  notifService    = inject(NotificationService);
 
   isHandset$ = this.bp.observe(Breakpoints.Handset).pipe(
     map(r => r.matches),
@@ -119,6 +129,22 @@ export class DashboardComponent implements AfterViewInit {
     this.search.valueChanges
       .pipe(debounceTime(200), distinctUntilChanged())
       .subscribe(v => this.searchValue.set((v ?? '').trim().toLowerCase()));
+
+    this.loadStats();
+
+    // Load pending tasks into the dashboard table
+    this.taskService.getTasks({ completed: false, limit: 10 }).pipe(
+      catchError(() => of({ data: [], total: 0, limit: 10, offset: 0 }))
+    ).subscribe(page => {
+      const rows = page.data.map(t => ({
+        title:    t.title,
+        due:      t.dueAt ? new Date(t.dueAt).toLocaleDateString() : '—',
+        status:   t.completedAt ? 'Done' : 'Pending',
+        assignee: t.assignee ? `${t.assignee.firstName} ${t.assignee.lastName}` : 'Unassigned',
+        id:       t.id,
+      }));
+      this.dataSource.data = rows;
+    });
   }
 
   displayName = computed(() => {
@@ -155,17 +181,33 @@ export class DashboardComponent implements AfterViewInit {
   }
 
   stats = signal([
-    { label: 'Open Matters', icon: 'work', value: 6, color: 'primary', link: '/matters' },
-    { label: 'Active Contracts', icon: 'description', value: 12, color: 'accent', link: '/contracts' },
-    { label: 'Pending Signatures', icon: 'edit_document', value: 3, color: 'warn', link: '/contracts' },
-    { label: 'Upcoming Reminders', icon: 'event', value: 5, color: 'primary', link: '/reminders' },
+    { label: 'Open Matters', icon: 'work', value: 0, color: 'primary', link: '/matters' },
+    { label: 'Active Contracts', icon: 'description', value: 0, color: 'accent', link: '/contracts' },
+    { label: 'Pending Tasks', icon: 'task_alt', value: 0, color: 'warn', link: '/tasks' },
+    { label: 'Notifications', icon: 'notifications', value: 0, color: 'primary', link: '/dashboard' },
   ]);
   statTrackBy = (_: number, s: any) => s.label;
 
+  loadStats(): void {
+    forkJoin({
+      matters:       this.matterService.getMatters({ status: 'OPEN', limit: 1 }).pipe(catchError(() => of({ data: [], total: 0, limit: 1, offset: 0 }))),
+      contracts:     this.contractService.getContracts().pipe(catchError(() => of({ data: [], total: 0, limit: 1, offset: 0 }))),
+      pendingTasks:  this.taskService.getTasks({ completed: false, limit: 1 }).pipe(catchError(() => of({ data: [], total: 0, limit: 1, offset: 0 }))),
+      notifications: this.notifService.getNotifications({ unread: true, limit: 1 }).pipe(catchError(() => of({ data: [], total: 0, unreadCount: 0, limit: 1, offset: 0 }))),
+    }).subscribe(({ matters, contracts, pendingTasks, notifications }) => {
+      this.stats.set([
+        { label: 'Open Matters',     icon: 'work',          value: matters.total,          color: 'primary', link: '/matters' },
+        { label: 'Active Contracts', icon: 'description',   value: contracts.total,         color: 'accent',  link: '/contracts' },
+        { label: 'Pending Tasks',    icon: 'task_alt',       value: pendingTasks.total,      color: 'warn',    link: '/tasks' },
+        { label: 'Unread Alerts',    icon: 'notifications', value: notifications.unreadCount, color: 'primary', link: '/dashboard' },
+      ]);
+    });
+  }
+
   recent = signal([
-    { icon: 'rate_review', text: 'Comment on NDA v2', when: '2h ago', link: '/contracts/123' },
-    { icon: 'upload', text: 'Uploaded "MSA_v1.pdf"', when: '5h ago', link: '/documents/abc' },
-    { icon: 'send', text: 'Envelope sent to john@acme.com', when: 'Yesterday', link: '/contracts/777' },
+    { icon: 'rate_review', text: 'Comment on NDA v2', when: '2h ago', link: '/contracts' },
+    { icon: 'upload', text: 'Uploaded "MSA_v1.pdf"', when: '5h ago', link: '/contracts' },
+    { icon: 'send', text: 'Envelope sent to john@acme.com', when: 'Yesterday', link: '/contracts' },
   ]);
   recentFiltered = computed(() => {
     const q = this.searchValue();
@@ -175,19 +217,16 @@ export class DashboardComponent implements AfterViewInit {
   recentTrackBy = (_: number, r: any) => r.text + r.when;
 
   quickActions = signal([
-    { icon: 'add', label: 'New Matter', tip: 'Create a new matter', to: '/matters/new' },
-    { icon: 'note_add', label: 'Upload Doc', tip: 'Upload a document', to: '/documents/upload' },
-    { icon: 'assignment_add', label: 'New Contract', tip: 'Create a contract', to: '/contracts/new' },
-    { icon: 'event', label: 'Add Reminder', tip: 'Set a reminder', to: '/reminders/new' },
+    { icon: 'add',             label: 'New Matter',    tip: 'Create a new matter',   to: '/matters' },
+    { icon: 'assignment_add',  label: 'New Contract',  tip: 'Create a contract',     to: '/contracts' },
+    { icon: 'task_alt',        label: 'View Tasks',    tip: 'View all tasks',         to: '/tasks' },
+    { icon: 'credit_card',     label: 'Billing',       tip: 'Billing & invoices',    to: '/billing' },
+    { icon: 'business',        label: 'Org Settings',  tip: 'Manage organization',   to: '/settings/organization' },
   ]);
   qaTrackBy = (_: number, a: any) => a.label;
 
   displayedColumns: string[] = ['title', 'due', 'status', 'assignee', 'actions'];
-  dataSource = new MatTableDataSource([
-    { title: 'Draft MSA for Acme', due: '2025-11-02', status: 'In review', assignee: 'You' },
-    { title: 'Send NDA to Vendor', due: '2025-10-29', status: 'Pending', assignee: 'You' },
-    { title: 'Invoice for Q3 work', due: '2025-11-05', status: 'Blocked', assignee: 'Billing' },
-  ]);
+  dataSource = new MatTableDataSource<any>([]);
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;

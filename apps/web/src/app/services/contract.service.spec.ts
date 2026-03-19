@@ -1,7 +1,7 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
-import { ContractService, Contract, ContractVersion } from './contract.service';
+import { ContractService, Contract, ContractVersion, ContractPage } from './contract.service';
 import { HttpErrorResponse } from '@angular/common/http';
 
 describe('ContractService', () => {
@@ -9,45 +9,48 @@ describe('ContractService', () => {
   let httpMock: HttpTestingController;
   const apiUrl = '/api/contracts';
 
+  const mockPage: ContractPage = {
+    data:   [{ id: 'c1', title: 'NDA', status: 'DRAFT' }, { id: 'c2', title: 'MSA', status: 'EXECUTED' }],
+    total:  2,
+    limit:  50,
+    offset: 0,
+  };
+
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        ContractService,
-      ],
+      providers: [provideHttpClient(), provideHttpClientTesting(), ContractService],
     });
-    service = TestBed.inject(ContractService);
+    service  = TestBed.inject(ContractService);
     httpMock = TestBed.inject(HttpTestingController);
   });
 
   afterEach(() => httpMock.verify());
 
-  it('should be created', () => {
-    expect(service).toBeTruthy();
-  });
+  it('should be created', () => expect(service).toBeTruthy());
 
   describe('getContracts()', () => {
-    const mockContracts: Contract[] = [
-      { id: 'c1', title: 'NDA', status: 'DRAFT' },
-      { id: 'c2', title: 'MSA', status: 'EXECUTED' },
-    ];
-
-    it('fetches all contracts without filter', () => {
-      service.getContracts().subscribe(contracts => {
-        expect(contracts).toEqual(mockContracts);
+    it('fetches all contracts without filter and returns paginated page', () => {
+      service.getContracts().subscribe(page => {
+        expect(page.data).toHaveLength(2);
+        expect(page.total).toBe(2);
       });
       const req = httpMock.expectOne(r => r.url === apiUrl);
       expect(req.request.method).toBe('GET');
       expect(req.request.params.has('matterId')).toBe(false);
-      req.flush(mockContracts);
+      req.flush(mockPage);
     });
 
     it('passes matterId as query param', () => {
       service.getContracts('m1').subscribe();
       const req = httpMock.expectOne(r => r.url === apiUrl && r.params.get('matterId') === 'm1');
       expect(req.request.method).toBe('GET');
-      req.flush([]);
+      req.flush({ data: [], total: 0, limit: 50, offset: 0 });
+    });
+
+    it('passes status filter', () => {
+      service.getContracts(undefined, { status: 'DRAFT' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === apiUrl && r.params.get('status') === 'DRAFT');
+      req.flush({ data: [], total: 0, limit: 50, offset: 0 });
     });
 
     it('propagates HTTP errors', fakeAsync(() => {
@@ -80,10 +83,10 @@ describe('ContractService', () => {
   describe('createContract()', () => {
     it('POSTs and returns created contract', () => {
       const created: Contract = { id: 'c3', title: 'New Contract', status: 'DRAFT' };
-      service.createContract({ title: 'New Contract' }).subscribe(c => expect(c).toEqual(created));
+      service.createContract({ title: 'New Contract', matterId: 'matter-1' }).subscribe(c => expect(c).toEqual(created));
       const req = httpMock.expectOne(apiUrl);
       expect(req.request.method).toBe('POST');
-      expect(req.request.body).toEqual({ title: 'New Contract' });
+      expect(req.request.body).toEqual({ title: 'New Contract', matterId: 'matter-1' });
       req.flush(created);
     });
   });
@@ -113,7 +116,7 @@ describe('ContractService', () => {
   describe('getVersions()', () => {
     it('fetches versions for a contract', () => {
       const versions: ContractVersion[] = [
-        { id: 'v1', contractId: 'c1', versionNumber: 1, storageKey: 'k1', mimeType: 'application/pdf', sizeBytes: 1024 },
+        { id: 'v1', contractId: 'c1', number: 1, storageKey: 'k1', mimeType: 'application/pdf', sizeBytes: 1024 },
       ];
       service.getVersions('c1').subscribe(v => expect(v).toEqual(versions));
       const req = httpMock.expectOne(`${apiUrl}/c1/versions`);
@@ -124,9 +127,7 @@ describe('ContractService', () => {
 
   describe('addVersion()', () => {
     it('POSTs a new version', () => {
-      const version: ContractVersion = {
-        id: 'v2', contractId: 'c1', versionNumber: 2, storageKey: 'k2', mimeType: 'application/pdf', sizeBytes: 2048,
-      };
+      const version: ContractVersion = { id: 'v2', contractId: 'c1', number: 2, storageKey: 'k2' };
       service.addVersion('c1', { storageKey: 'k2', mimeType: 'application/pdf', sizeBytes: 2048 })
         .subscribe(v => expect(v).toEqual(version));
       const req = httpMock.expectOne(`${apiUrl}/c1/versions`);

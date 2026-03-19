@@ -39,22 +39,33 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const organizationId = orgGuard(req, res);
     if (!organizationId) return;
 
-    const { matterId, status } = req.query;
-    const contracts = await prisma.contract.findMany({
-      where: {
-        organizationId,
-        deletedAt: null,
-        ...(matterId && typeof matterId === 'string' ? { matterId } : {}),
-        ...(status   && typeof status   === 'string' ? { status: status as any } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        matter:         { select: { id: true, title: true } },
-        currentVersion: { select: { id: true, number: true, title: true, createdAt: true } },
-        _count:         { select: { versions: true } },
-      },
-    });
-    res.json(contracts);
+    const { matterId, status, limit = '50', offset = '0' } = req.query;
+    const take = Math.min(Number(limit), 100);
+    const skip = Number(offset);
+
+    const where: any = {
+      organizationId,
+      deletedAt: null,
+      ...(matterId && typeof matterId === 'string' ? { matterId } : {}),
+      ...(status   && typeof status   === 'string' ? { status: status as any } : {}),
+    };
+
+    const [contracts, total] = await Promise.all([
+      prisma.contract.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          matter:         { select: { id: true, title: true } },
+          currentVersion: { select: { id: true, number: true, title: true, createdAt: true } },
+          _count:         { select: { versions: true } },
+        },
+      }),
+      prisma.contract.count({ where }),
+    ]);
+
+    res.json({ data: contracts, total, limit: take, offset: skip });
   } catch (error) {
     next(error);
   }

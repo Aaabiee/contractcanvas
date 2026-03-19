@@ -23,21 +23,32 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       return res.status(403).json({ error: 'No active organization. Include X-Organization-Id header.' });
     }
 
-    const { status } = req.query;
-    const matters = await prisma.matter.findMany({
-      where: {
-        organizationId,
-        deletedAt: null,
-        ...(status && typeof status === 'string' ? { status: status as any } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
-        participants: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
-        _count:       { select: { contracts: true, documents: true, tasks: true } },
-      },
-    });
-    res.json(matters);
+    const { status, limit = '50', offset = '0' } = req.query;
+    const take = Math.min(Number(limit), 100);
+    const skip = Number(offset);
+
+    const where: any = {
+      organizationId,
+      deletedAt: null,
+      ...(status && typeof status === 'string' ? { status: status as any } : {}),
+    };
+
+    const [matters, total] = await Promise.all([
+      prisma.matter.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
+          participants: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+          _count:       { select: { contracts: true, documents: true, tasks: true } },
+        },
+      }),
+      prisma.matter.count({ where }),
+    ]);
+
+    res.json({ data: matters, total, limit: take, offset: skip });
   } catch (error) {
     next(error);
   }

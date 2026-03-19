@@ -1,44 +1,111 @@
 <div class="matter-detail-container">
   <a routerLink="/matters" class="back-link">&larr; Back to Matters</a>
 
-  <div *ngIf="error" class="error-message">{{ error }}</div>
+  <div *ngIf="error()" class="error-message">{{ error() }}</div>
 
-  <ng-container *ngIf="data$ | async as data; else loading">
-    <div *ngIf="data; else notFound">
-      <h2>{{ data.matter.title }}</h2>
-      <span class="status-badge">{{ data.matter.status }}</span>
-      <p class="description">{{ data.matter.description || 'No description provided.' }}</p>
+  <div *ngIf="loading()" class="loading-center">
+    <mat-spinner diameter="40"></mat-spinner>
+  </div>
 
-      <section class="related-items">
-        <h3>Contracts</h3>
-        <p *ngIf="data.contracts.length === 0" class="empty-list">No contracts for this matter.</p>
-        <ul class="contract-list" *ngIf="data.contracts.length > 0">
-          <li *ngFor="let contract of data.contracts" class="contract-item">
-            <a [routerLink]="['/contracts', contract.id]">
-              <span class="contract-title">{{ contract.title }}</span>
-              <span class="contract-status">{{ contract.status }}</span>
-            </a>
-          </li>
-        </ul>
-
-        <h3>Documents</h3>
-        <p *ngIf="data.documents.length === 0" class="empty-list">No documents for this matter.</p>
-        <ul class="document-list" *ngIf="data.documents.length > 0">
-          <li *ngFor="let doc of data.documents" class="document-item">
-            <span class="document-name">{{ doc.filename }}</span>
-            <span class="document-size">{{ formatBytes(doc.sizeBytes) }}</span>
-            <span class="document-kind">{{ doc.kind }}</span>
-          </li>
-        </ul>
-      </section>
+  <ng-container *ngIf="!loading() && matter() as m">
+    <div class="matter-header">
+      <div class="matter-title-row">
+        <h2>{{ m.title }}</h2>
+        <mat-chip [color]="statusColor(m.status)" selected>{{ m.status }}</mat-chip>
+      </div>
+      <p class="description">{{ m.description || 'No description provided.' }}</p>
     </div>
+
+    <mat-tab-group animationDuration="200ms">
+
+      <!-- Contracts Tab -->
+      <mat-tab label="Contracts ({{ contracts().length }})">
+        <div class="tab-content">
+          <div *ngIf="contracts().length === 0" class="empty-state">
+            <mat-icon>description</mat-icon>
+            <p>No contracts yet.</p>
+            <a mat-stroked-button [routerLink]="['/contracts']">View All Contracts</a>
+          </div>
+          <mat-card *ngFor="let contract of contracts()" class="item-card">
+            <mat-card-content>
+              <div class="item-row">
+                <div class="item-info">
+                  <a [routerLink]="['/contracts', contract.id]" class="item-title">{{ contract.title }}</a>
+                  <mat-chip [color]="statusColor(contract.status)" selected class="status-chip">
+                    {{ contract.status }}
+                  </mat-chip>
+                </div>
+                <div *ngIf="contract.valueCents" class="item-value">
+                  {{ contract.valueCents / 100 | currency:(contract.currency || 'USD').toUpperCase() }}
+                </div>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        </div>
+      </mat-tab>
+
+      <!-- Documents Tab -->
+      <mat-tab label="Documents ({{ documents().length }})">
+        <div class="tab-content">
+          <div *ngIf="documents().length === 0" class="empty-state">
+            <mat-icon>folder_open</mat-icon>
+            <p>No documents uploaded yet.</p>
+          </div>
+          <mat-card *ngFor="let doc of documents()" class="item-card">
+            <mat-card-content>
+              <div class="item-row">
+                <div class="item-info">
+                  <mat-icon class="doc-icon">insert_drive_file</mat-icon>
+                  <span class="item-title">{{ doc.filename }}</span>
+                  <mat-chip class="kind-chip">{{ doc.kind }}</mat-chip>
+                </div>
+                <span class="doc-size">{{ formatBytes(doc.sizeBytes) }}</span>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        </div>
+      </mat-tab>
+
+      <!-- Tasks Tab -->
+      <mat-tab label="Tasks ({{ tasks().length }})">
+        <div class="tab-content">
+          <div *ngIf="tasks().length === 0" class="empty-state">
+            <mat-icon>task_alt</mat-icon>
+            <p>No tasks for this matter.</p>
+            <a mat-stroked-button routerLink="/tasks">View All Tasks</a>
+          </div>
+          <mat-card *ngFor="let task of tasks()" class="item-card task-card"
+                    [class.task-done]="!!task.completedAt">
+            <mat-card-content>
+              <div class="item-row">
+                <mat-checkbox
+                  [checked]="!!task.completedAt"
+                  (change)="toggleTask(task)">
+                </mat-checkbox>
+                <div class="task-info">
+                  <span class="item-title" [class.done-text]="!!task.completedAt">{{ task.title }}</span>
+                  <div class="task-meta">
+                    <span *ngIf="task.dueAt" [class.overdue]="isOverdue(task)">
+                      <mat-icon class="tiny-icon">event</mat-icon>
+                      {{ task.dueAt | date:'MMM d, y' }}
+                    </span>
+                    <span *ngIf="task.assignee">
+                      <mat-icon class="tiny-icon">person</mat-icon>
+                      {{ task.assignee.firstName }} {{ task.assignee.lastName }}
+                    </span>
+                  </div>
+                  <p *ngIf="task.description" class="task-desc">{{ task.description }}</p>
+                </div>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        </div>
+      </mat-tab>
+
+    </mat-tab-group>
   </ng-container>
 
   <ng-template #notFound>
-    <p *ngIf="!error">Matter not found.</p>
-  </ng-template>
-
-  <ng-template #loading>
-    <p *ngIf="!error">Loading matter details...</p>
+    <p *ngIf="!error()">Matter not found.</p>
   </ng-template>
 </div>

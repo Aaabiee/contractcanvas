@@ -1,0 +1,172 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import express from 'express';
+import request from 'supertest';
+
+process.env.JWT_SECRET = 'test-secret-key-for-testing';
+process.env.NODE_ENV = 'test';
+
+vi.mock('../../config.js', () => ({
+  app: { env: 'test', port: 3333 },
+  db: { host: 'localhost', name: 'test', password: 'test', user: 'test', port: 5432, schema: 'public', container_name: 'test' },
+  s3: { region: 'us-east-1', bucket: 'test', forcePathStyle: true },
+  stripe: {},
+  jwt: { secret: 'test-secret-key-for-testing' },
+  DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+}));
+
+const mockPrisma = {
+  comment: {
+    findMany:  vi.fn(),
+    findFirst: vi.fn(),
+    create:    vi.fn(),
+    update:    vi.fn(),
+    delete:    vi.fn(),
+    count:     vi.fn(),
+  },
+};
+vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
+
+const { default: router } = await import('../comments.js');
+
+function buildApp(orgId = 'org-1', userId = 'user-1') {
+  const app = express();
+  app.use(express.json());
+  app.use((req: any, _res: any, next: any) => {
+    req.user = { id: userId, organizationId: orgId };
+    next();
+  });
+  app.use('/', router);
+  return app;
+}
+
+function buildAppNoOrg() {
+  const app = express();
+  app.use(express.json());
+  app.use((req: any, _res: any, next: any) => {
+    req.user = { id: 'user-1' };
+    next();
+  });
+  app.use('/', router);
+  return app;
+}
+
+const sampleComment = {
+  id:             'comment-1',
+  organizationId: 'org-1',
+  authorId:       'user-1',
+  matterId:       'matter-1',
+  contractId:     null,
+  documentId:     null,
+  bodyMd:         '# Review needed',
+  createdAt:      new Date(),
+  editedAt:       null,
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('GET /api/comments', () => {
+  it('returns 403 when no active organization', async () => {
+    const res = await request(buildAppNoOrg()).get('/');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns paginated comments', async () => {
+    mockPrisma.comment.findMany.mockResolvedValue([sampleComment]);
+    mockPrisma.comment.count.mockResolvedValue(1);
+    const res = await request(buildApp()).get('/?matterId=matter-1');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.total).toBe(1);
+  });
+
+  it('filters by matterId', async () => {
+    mockPrisma.comment.findMany.mockResolvedValue([]);
+    mockPrisma.comment.count.mockResolvedValue(0);
+    await request(buildApp()).get('/?matterId=matter-5');
+    expect(mockPrisma.comment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ matterId: 'matter-5' }) })
+    );
+  });
+
+  it('filters by contractId', async () => {
+    mockPrisma.comment.findMany.mockResolvedValue([]);
+    mockPrisma.comment.count.mockResolvedValue(0);
+    await request(buildApp()).get('/?contractId=contract-3');
+    expect(mockPrisma.comment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ contractId: 'contract-3' }) })
+    );
+  });
+});
+
+describe('POST /api/comments', () => {
+  it('returns 403 when no org', async () => {
+    const res = await request(buildAppNoOrg()).post('/').send({ bodyMd: 'hi', matterId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when no resource id provided', async () => {
+    const res = await request(buildApp()).post('/').send({ bodyMd: 'hi' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when bodyMd is empty', async () => {
+    const res = await request(buildApp()).post('/').send({ bodyMd: '', matterId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(400);
+  });
+
+  it('creates comment with authorId and organizationId', async () => {
+    mockPrisma.comment.create.mockResolvedValue({ ...sampleComment });
+    const res = await request(buildApp('org-1', 'user-7'))
+      .post('/')
+      .send({ bodyMd: '# Note', matterId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(201);
+    expect(mockPrisma.comment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ authorId: 'user-7', organizationId: 'org-1' }),
+      })
+    );
+  });
+});
+
+describe('PATCH /api/comments/:id', () => {
+  it('returns 404 when comment not found or not authored by user', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue(null);
+    const res = await request(buildApp()).patch('/comment-99').send({ bodyMd: 'Updated' });
+    expect(res.status).toBe(404);
+  });
+
+  it('updates comment body and sets editedAt', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue(sampleComment);
+    mockPrisma.comment.update.mockResolvedValue({ ...sampleComment, bodyMd: 'Updated', editedAt: new Date() });
+    const res = await request(buildApp()).patch('/comment-1').send({ bodyMd: 'Updated' });
+    expect(res.status).toBe(200);
+    expect(mockPrisma.comment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ bodyMd: 'Updated', editedAt: expect.any(Date) }),
+      })
+    );
+  });
+
+  it('returns 400 for empty bodyMd', async () => {
+    const res = await request(buildApp()).patch('/comment-1').send({ bodyMd: '' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('DELETE /api/comments/:id', () => {
+  it('returns 404 when comment not found', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue(null);
+    const res = await request(buildApp()).delete('/comment-99');
+    expect(res.status).toBe(404);
+  });
+
+  it('deletes comment and returns 204', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue(sampleComment);
+    mockPrisma.comment.delete.mockResolvedValue(sampleComment);
+    const res = await request(buildApp()).delete('/comment-1');
+    expect(res.status).toBe(204);
+    expect(mockPrisma.comment.delete).toHaveBeenCalledWith({ where: { id: 'comment-1' } });
+  });
+});

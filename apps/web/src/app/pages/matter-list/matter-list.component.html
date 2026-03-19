@@ -1,20 +1,26 @@
 <div class="matter-list-container">
-  <h2>Matters</h2>
-  <div *ngIf="error" class="error-message">{{ error }}</div>
+  <div class="list-header">
+    <h2>Matters</h2>
+    <span class="total-badge" *ngIf="total() > 0">{{ total() }} total</span>
+  </div>
 
-  <ul class="matter-list" *ngIf="matters$ | async as matters; else loading">
-    <li *ngIf="matters.length === 0 && !error" class="empty-list">
+  <div *ngIf="error()" class="error-message">{{ error() }}</div>
+  <div *ngIf="loading()" class="loading-message">Loading matters...</div>
+
+  <ul class="matter-list" *ngIf="!loading()">
+    <li *ngIf="matters().length === 0 && !error()" class="empty-list">
       No matters found.
     </li>
-    <li *ngFor="let matter of matters" class="matter-item">
+    <li *ngFor="let matter of matters()" class="matter-item">
       <a [routerLink]="['/matters', matter.id]">
         <span class="matter-title">{{ matter.title }}</span>
-        <span class="matter-status">{{ matter.status }}</span>
+        <span class="matter-status" [class]="'status-' + matter.status.toLowerCase()">{{ matter.status }}</span>
       </a>
+      <div class="matter-counts" *ngIf="matter._count">
+        <span>{{ matter._count.contracts }} contract(s)</span>
+        <span>{{ matter._count.documents }} doc(s)</span>
+        <span>{{ matter._count.tasks }} task(s)</span>
+      </div>
     </li>
   </ul>
-
-  <ng-template #loading>
-    <p *ngIf="!error">Loading matters...</p>
-  </ng-template>
 </div>

@@ -266,4 +266,31 @@ router.get('/me', protect, (req: Request, res: Response) => {
   res.json(req.user);
 });
 
+router.post('/refresh-token', protect, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    const memberships = await prisma.organizationMember.findMany({
+      where: { userId },
+      include: { organization: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const organizations = memberships.map(m => ({
+      id:   m.organization.id,
+      name: m.organization.name,
+      slug: m.organization.slug,
+      role: m.role,
+    }));
+
+    const tokenPayload = { sub: user.id, email: user.email, role: user.role, organizations };
+    const token = jwt.sign(tokenPayload, jwtConfig.secret, { expiresIn: '1d' });
+
+    res.json({ token });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

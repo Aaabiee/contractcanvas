@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { prisma } from './prisma.js';
 import { app as appCfg, DATABASE_URL as pgUrl, db } from './config.js';
 
-import { auth, matters, contracts, documents, organizations, signatures, billing } from './routes/index.js';
+import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses } from './routes/index.js';
 import { protect } from './middleware/auth.js';
 
 const app = express();
@@ -64,6 +64,10 @@ app.use('/api/contracts',     protect, contracts);
 app.use('/api/documents',     protect, documents);
 app.use('/api/organizations', protect, organizations);
 app.use('/api/signatures',    protect, signatures);
+app.use('/api/tasks',         protect, tasks);
+app.use('/api/comments',      protect, comments);
+app.use('/api/notifications', protect, notifications);
+app.use('/api/clauses',       protect, clauses);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' });

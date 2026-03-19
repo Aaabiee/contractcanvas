@@ -20,8 +20,10 @@
 
     "up": "npm run config:env && docker compose -f ../../infra/docker-compose.yml --env-file ../../infra/.env up -d",
     "down": "docker compose -f ../../infra/docker-compose.yml --env-file ../../infra/.env down",
+    "prisma:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",

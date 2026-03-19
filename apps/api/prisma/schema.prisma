@@ -196,9 +196,11 @@ model Matter {
   comments     Comment[]
 
   @@index([organizationId])
-  @@index([status]) // Indexing enums is fine, though effectiveness varies
+  @@index([status])
   @@index([ownerId])
   @@index([deletedAt])
+  @@index([organizationId, status])
+  @@index([organizationId, deletedAt])
 }
 
 model MatterParticipant {
@@ -241,6 +243,8 @@ model Contract {
   @@index([matterId])
   @@index([status])
   @@index([deletedAt])
+  @@index([organizationId, status])
+  @@index([organizationId, matterId])
 }
 
 model ContractVersion {
@@ -436,6 +440,9 @@ model Task {
   @@index([matterId])
   @@index([assigneeId])
   @@index([dueAt])
+  @@index([organizationId, matterId])
+  @@index([organizationId, assigneeId])
+  @@index([organizationId, completedAt])
 }
 
 // ===================== Billing =====================
