@@ -3,15 +3,17 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { ContractListComponent } from './contract-list.component';
-import { ContractService, Contract } from '../../services/contract.service';
+import { ContractService, Contract, ContractPage } from '../../services/contract.service';
 
 const mockContracts: Contract[] = [
   { id: 'c1', title: 'NDA', status: 'DRAFT' },
   { id: 'c2', title: 'MSA', status: 'EXECUTED' },
 ];
 
+const mockPage = (data: Contract[]): ContractPage => ({ data, total: data.length, limit: 10, offset: 0 });
+
 class MockContractService {
-  getContracts = jest.fn(() => of(mockContracts));
+  getContracts = jest.fn(() => of(mockPage(mockContracts)));
 }
 
 describe('ContractListComponent', () => {
@@ -55,7 +57,7 @@ describe('ContractListComponent', () => {
   });
 
   it('displays "No contracts found" when list is empty', () => {
-    (contractService.getContracts as jest.Mock).mockReturnValue(of([]));
+    (contractService.getContracts as jest.Mock).mockReturnValue(of(mockPage([])));
     fixture.detectChanges();
     const empty = fixture.nativeElement.querySelector('.empty-list');
     expect(empty).toBeTruthy();
@@ -63,7 +65,7 @@ describe('ContractListComponent', () => {
   });
 
   it('sets error message when getContracts fails', () => {
-    const subject = new Subject<Contract[]>();
+    const subject = new Subject<ContractPage>();
     (contractService.getContracts as jest.Mock).mockReturnValue(subject.asObservable());
     fixture.detectChanges();
     subject.error(new Error('Network error'));

@@ -2,6 +2,7 @@
   "jest.jestCommandLine": "npx jest --config=apps/web/jest.config.js",
   "cSpell.words": [
     "bowser",
+    "minioadmin",
     "briebug",
     "contractcanvas",
     "cooldown",
