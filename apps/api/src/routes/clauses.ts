@@ -17,7 +17,6 @@ const orgGuard = (req: Request, res: Response): string | null => {
   return id ?? null;
 };
 
-// GET /api/clauses?q=&limit=&offset=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -51,7 +50,6 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// GET /api/clauses/:id
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -68,7 +66,6 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// POST /api/clauses
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -86,7 +83,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// PATCH /api/clauses/:id
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -105,7 +101,6 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
-// DELETE /api/clauses/:id
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);

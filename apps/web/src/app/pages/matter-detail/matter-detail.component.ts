@@ -57,7 +57,7 @@ export class MatterDetailComponent implements OnInit {
   ngOnInit(): void {
     this.route.paramMap.subscribe(params => {
       const id = params.get('id');
-      if (!id) { this.error.set('No Matter ID provided.'); this.loading.set(false); return; }
+      if (!id) { this.error.set('No Matter ID provided in URL.'); this.loading.set(false); return; }
       this.matterId.set(id);
       this.loadAll(id);
     });

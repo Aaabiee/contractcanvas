@@ -27,7 +27,6 @@ const orgGuard = (req: Request, res: Response): string | null => {
   return id ?? null;
 };
 
-// GET /api/comments?matterId=&contractId=&documentId=&limit=&offset=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -62,7 +61,6 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// POST /api/comments
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -93,7 +91,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// PATCH /api/comments/:id  (author-only)
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
@@ -118,7 +115,6 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
-// DELETE /api/comments/:id  (author-only)
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);

@@ -7,12 +7,37 @@ import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
 import { AuthService } from '../../services/auth.service';
+import { MatterService } from '../../services/matter.service';
+import { ContractService } from '../../services/contract.service';
+import { TaskService } from '../../services/task.service';
+import { NotificationService } from '../../services/notification.service';
 
 const mockCurrentUser = signal<any>(null);
+
+const emptyPage      = { data: [], total: 0, limit: 1,  offset: 0 };
+const emptyTaskPage  = { data: [], total: 0, limit: 10, offset: 0 };
+const emptyNotifPage = { data: [], total: 0, unreadCount: 0, limit: 1, offset: 0 };
 
 class MockAuthService {
   currentUser = mockCurrentUser;
   logout = jest.fn();
+}
+
+class MockMatterService {
+  getMatters = jest.fn(() => of(emptyPage));
+}
+
+class MockContractService {
+  getContracts = jest.fn(() => of(emptyPage));
+}
+
+class MockTaskService {
+  getTasks = jest.fn(() => of(emptyTaskPage));
+}
+
+class MockNotificationService {
+  unreadCount      = signal(0);
+  getNotifications = jest.fn(() => of(emptyNotifPage));
 }
 
 describe('DashboardComponent', () => {
@@ -24,30 +49,34 @@ describe('DashboardComponent', () => {
   let router: Router;
 
   beforeEach(async () => {
-    dialog = { open: jest.fn(() => ({ afterClosed: () => of(true) })) };
+    dialog   = { open: jest.fn(() => ({ afterClosed: () => of(true) })) };
     snackBar = { open: jest.fn() };
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
-        { provide: AuthService, useClass: MockAuthService },
+        { provide: AuthService,          useClass: MockAuthService          },
+        { provide: MatterService,        useClass: MockMatterService        },
+        { provide: ContractService,      useClass: MockContractService      },
+        { provide: TaskService,          useClass: MockTaskService          },
+        { provide: NotificationService,  useClass: MockNotificationService  },
       ],
     })
       .overrideComponent(DashboardComponent, {
         add: {
           providers: [
-            { provide: MatDialog, useValue: dialog },
+            { provide: MatDialog,   useValue: dialog   },
             { provide: MatSnackBar, useValue: snackBar },
           ],
         },
       })
       .compileComponents();
 
-    fixture = TestBed.createComponent(DashboardComponent);
-    component = fixture.componentInstance;
+    fixture     = TestBed.createComponent(DashboardComponent);
+    component   = fixture.componentInstance;
     authService = TestBed.inject(AuthService) as unknown as MockAuthService;
-    router = TestBed.inject(Router);
+    router      = TestBed.inject(Router);
     fixture.detectChanges();
   });
 

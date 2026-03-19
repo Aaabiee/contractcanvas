@@ -20,6 +20,7 @@ const mockPrisma = {
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    count: vi.fn(),
   },
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
@@ -74,16 +75,19 @@ describe('GET /api/matters', () => {
 
   it('returns list of matters for the organization', async () => {
     mockPrisma.matter.findMany.mockResolvedValue([sampleMatter]);
+    mockPrisma.matter.count.mockResolvedValue(1);
     const app = buildApp();
     const res = await request(app).get('/');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].id).toBe('matter-1');
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].id).toBe('matter-1');
+    expect(res.body.total).toBe(1);
   });
 
   it('passes status filter to prisma query', async () => {
     mockPrisma.matter.findMany.mockResolvedValue([]);
+    mockPrisma.matter.count.mockResolvedValue(0);
     const app = buildApp();
     await request(app).get('/?status=CLOSED');
     expect(mockPrisma.matter.findMany).toHaveBeenCalledWith(
@@ -95,6 +99,7 @@ describe('GET /api/matters', () => {
 
   it('always filters by organizationId and deletedAt: null', async () => {
     mockPrisma.matter.findMany.mockResolvedValue([]);
+    mockPrisma.matter.count.mockResolvedValue(0);
     const app = buildApp('org-42');
     await request(app).get('/');
     expect(mockPrisma.matter.findMany).toHaveBeenCalledWith(

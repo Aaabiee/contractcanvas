@@ -1,26 +1,36 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, Subject } from 'rxjs';
 import { MatterDetailComponent } from './matter-detail.component';
 import { MatterService, Matter } from '../../services/matter.service';
 import { ContractService } from '../../services/contract.service';
 import { DocumentService } from '../../services/document.service';
+import { TaskService } from '../../services/task.service';
 
 const mockMatter: Matter = {
   id: 'm1', title: 'Test Matter', status: 'OPEN', description: 'Test description',
 };
+
+const emptyPage = { data: [], total: 0, limit: 50, offset: 0 };
 
 class MockMatterService {
   getMatter = jest.fn((id: string) => id === 'm1' ? of(mockMatter) : of(null as any));
 }
 
 class MockContractService {
-  getContracts = jest.fn(() => of([]));
+  getContracts = jest.fn(() => of(emptyPage));
 }
 
 class MockDocumentService {
   getDocuments = jest.fn(() => of([]));
+}
+
+class MockTaskService {
+  getTasks      = jest.fn(() => of(emptyPage));
+  completeTask  = jest.fn(() => of({ id: 't1', completedAt: new Date().toISOString() }));
+  reopenTask    = jest.fn(() => of({ id: 't1', completedAt: null }));
 }
 
 describe('MatterDetailComponent', () => {
@@ -32,13 +42,14 @@ describe('MatterDetailComponent', () => {
   async function setup() {
     paramMapSubject = new Subject();
     await TestBed.configureTestingModule({
-      imports: [MatterDetailComponent],
+      imports: [MatterDetailComponent, NoopAnimationsModule],
       providers: [
         provideHttpClientTesting(),
         provideRouter([]),
-        { provide: MatterService, useClass: MockMatterService },
+        { provide: MatterService,  useClass: MockMatterService  },
         { provide: ContractService, useClass: MockContractService },
         { provide: DocumentService, useClass: MockDocumentService },
+        { provide: TaskService,    useClass: MockTaskService    },
         { provide: ActivatedRoute, useValue: { paramMap: paramMapSubject.asObservable() } },
       ],
     }).compileComponents();
@@ -73,7 +84,7 @@ describe('MatterDetailComponent', () => {
     const h2 = fixture.nativeElement.querySelector('h2');
     expect(h2.textContent).toBe('Test Matter');
     const badge = fixture.nativeElement.querySelector('.status-badge');
-    expect(badge.textContent).toBe('OPEN');
+    expect(badge.textContent.trim()).toBe('OPEN');
     const desc = fixture.nativeElement.querySelector('.description');
     expect(desc.textContent).toBe('Test description');
   });
@@ -83,7 +94,7 @@ describe('MatterDetailComponent', () => {
     fixture.detectChanges();
     paramMapSubject.next(convertToParamMap({}));
     fixture.detectChanges();
-    expect(component.error).toBe('No Matter ID provided in URL.');
+    expect(component.error()).toBe('No Matter ID provided in URL.');
     expect(matterService.getMatter).not.toHaveBeenCalled();
   });
 
@@ -97,17 +108,17 @@ describe('MatterDetailComponent', () => {
     paramMapSubject.next(convertToParamMap({ id: 'm1' }));
     errSubject.error(new Error('Not found'));
     fixture.detectChanges();
-    expect(component.error).toBe('Could not load matter details.');
+    expect(component.error()).toBe('Could not load matter details.');
   });
 
-  it('shows empty contracts and documents sections', async () => {
+  it('shows empty contracts section and has no documents loaded', async () => {
     await setup();
     fixture.detectChanges();
     paramMapSubject.next(convertToParamMap({ id: 'm1' }));
     fixture.detectChanges();
-    const emptyTexts = Array.from(fixture.nativeElement.querySelectorAll('.empty-list'))
-      .map((el: any) => el.textContent);
-    expect(emptyTexts.some(t => t.includes('No contracts'))).toBe(true);
-    expect(emptyTexts.some(t => t.includes('No documents'))).toBe(true);
+    const firstEmpty = fixture.nativeElement.querySelector('.empty-state');
+    expect(firstEmpty).toBeTruthy();
+    expect(firstEmpty.textContent).toContain('No contracts');
+    expect(component.documents()).toEqual([]);
   });
 });

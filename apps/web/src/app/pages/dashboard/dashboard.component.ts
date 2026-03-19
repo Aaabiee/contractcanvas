@@ -132,7 +132,6 @@ export class DashboardComponent implements AfterViewInit {
 
     this.loadStats();
 
-    // Load pending tasks into the dashboard table
     this.taskService.getTasks({ completed: false, limit: 10 }).pipe(
       catchError(() => of({ data: [], total: 0, limit: 10, offset: 0 }))
     ).subscribe(page => {

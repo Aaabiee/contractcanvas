@@ -3,7 +3,6 @@ import prisma from '../prisma.js';
 
 const router = Router();
 
-// GET /api/notifications?unread=true&limit=&offset=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;
@@ -27,7 +26,6 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// PATCH /api/notifications/read-all — must come before /:id route
 router.patch('/read-all', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;
@@ -41,7 +39,6 @@ router.patch('/read-all', async (req: Request, res: Response, next: NextFunction
   }
 });
 
-// PATCH /api/notifications/:id/read
 router.patch('/:id/read', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;

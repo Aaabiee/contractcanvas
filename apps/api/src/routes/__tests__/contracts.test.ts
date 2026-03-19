@@ -20,6 +20,7 @@ const mockPrisma = {
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    count: vi.fn(),
   },
   contractVersion: {
     findFirst: vi.fn(),
@@ -84,14 +85,17 @@ describe('GET /api/contracts', () => {
 
   it('returns list of contracts', async () => {
     mockPrisma.contract.findMany.mockResolvedValue([sampleContract]);
+    mockPrisma.contract.count.mockResolvedValue(1);
     const app = buildApp();
     const res = await request(app).get('/');
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.total).toBe(1);
   });
 
   it('filters by matterId when provided', async () => {
     mockPrisma.contract.findMany.mockResolvedValue([]);
+    mockPrisma.contract.count.mockResolvedValue(0);
     const app = buildApp();
     await request(app).get('/?matterId=matter-1');
     expect(mockPrisma.contract.findMany).toHaveBeenCalledWith(
@@ -103,6 +107,7 @@ describe('GET /api/contracts', () => {
 
   it('filters by status when provided', async () => {
     mockPrisma.contract.findMany.mockResolvedValue([]);
+    mockPrisma.contract.count.mockResolvedValue(0);
     const app = buildApp();
     await request(app).get('/?status=DRAFT');
     expect(mockPrisma.contract.findMany).toHaveBeenCalledWith(

@@ -16,7 +16,7 @@ export const router = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 const singleFileUpload: RequestHandler = upload.single('file') as unknown as RequestHandler;

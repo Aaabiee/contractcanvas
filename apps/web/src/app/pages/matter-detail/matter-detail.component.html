@@ -11,7 +11,7 @@
     <div class="matter-header">
       <div class="matter-title-row">
         <h2>{{ m.title }}</h2>
-        <mat-chip [color]="statusColor(m.status)" selected>{{ m.status }}</mat-chip>
+        <mat-chip [color]="statusColor(m.status)" selected class="status-badge">{{ m.status }}</mat-chip>
       </div>
       <p class="description">{{ m.description || 'No description provided.' }}</p>
     </div>

@@ -1,40 +1,73 @@
 # ContractCanvas
 
-A modern, multi-tenant **contract and matter management platform** built for law firms and their clients. Manages the full lifecycle of legal work: matters, contract drafting and versioning, document storage, e-signatures, billing, and team collaboration — all scoped to isolated organizations.
+A modern, multi-tenant **contract and matter management platform** built for law firms and their clients. Manages the full lifecycle of legal work: matters, contract drafting and versioning, document storage, tasks, team collaboration, notifications, clause library, billing, and e-signatures — all scoped to isolated organizations.
 
-Monorepo with a Node/Express API, Angular 20 web app, PostgreSQL (via Docker), S3-compatible storage (MinIO), Stripe billing, and Prisma ORM.
+Monorepo with a Node/Express API, Angular 20 web app, PostgreSQL 16 (via Docker), S3-compatible storage (MinIO), Stripe billing, and Prisma 5 ORM.
 
-> The **API** mounts all routes under `/api/*`. The **web** dev server proxies `/api` → `http://localhost:3333`, so the frontend never needs to know the API port.
+> All API routes are mounted under `/api/*`. The Angular dev server proxies `/api` → `http://localhost:3333`.
+
+---
+
+## Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                          GitHub Actions                             │
+│  ci.yml (lint+test+build) ──► deploy-dev/qa/prod.yml               │
+│                                    │ build+push to GHCR             │
+│                                    ▼ SSH deploy                     │
+│                            Docker host (dev/qa/prod)                │
+└─────────────────────────────────────┬───────────────────────────────┘
+                                      │
+              ┌───────────────────────▼───────────────────────┐
+              │               nginx:1.27-alpine               │
+              │  - Serves Angular SPA (static assets)         │
+              │  - Proxies /api/* → api:3333                  │
+              │  - gzip, security headers, 1-yr asset cache   │
+              └───────────────────────┬───────────────────────┘
+                         ┌────────────┴──────────┐
+                         │                       │
+              ┌──────────▼──────────┐  ┌─────────▼──────────┐
+              │   Angular 20 SPA    │  │  Express API (3333) │
+              │  Standalone comps   │  │  TypeScript, Prisma │
+              │  Signals, RxJS      │  │  JWT + Helmet       │
+              │  Material Design    │  │  Rate limiting      │
+              └─────────────────────┘  └──────┬──────┬───────┘
+                                              │      │
+                          ┌───────────────────┘      └──────────┐
+                          │                                      │
+               ┌──────────▼──────────┐              ┌───────────▼──────────┐
+               │   PostgreSQL 16     │              │   MinIO (S3-compat.)  │
+               │   Prisma 5 ORM      │              │   Document storage    │
+               │   26-model schema   │              │   Presigned URLs      │
+               └─────────────────────┘              └──────────────────────┘
+                                                              │
+                                                   ┌──────────▼──────────┐
+                                                   │   Stripe API        │
+                                                   │   PaymentIntents    │
+                                                   └─────────────────────┘
+```
 
 ---
 
 ## Features
 
-### Implemented & Working
-
-- **JWT Authentication** — Register (create or join an org), login, and `/me` endpoint. Passwords hashed with bcrypt. Tokens signed HS256 (shared secret) with RS256/JWKS fallback for OpenID providers.
-- **Organizations & Multi-tenancy** — Every resource is scoped to an organization. Users can belong to multiple orgs with distinct roles per org.
-- **Role-Based Access Control** — Two independent role dimensions: system roles (`ADMIN`, `LAWYER`, `PARALEGAL`, `CLIENT`) and org roles (`OWNER`, `ADMIN`, `MEMBER`). Middleware enforces both.
-- **Matters** — Create and manage legal matters/cases with `OPEN`, `ON_HOLD`, and `CLOSED` states. Supports many participants per matter.
-- **Contracts** — Full CRUD with status workflow: `DRAFT → NEGOTIATION → PENDING_SIGNATURE → EXECUTED → ARCHIVED`. Tracks value in cents + currency.
-- **Contract Versioning** — Immutable version history: each version stores an S3 key, MIME type, size, author, optional diff JSON, and AI context. Version numbers auto-increment atomically.
-- **Document Management** — Upload files (up to 50 MB) to S3/MinIO. Metadata persisted in PostgreSQL. Presigned download URLs (5-minute expiry) generated on demand. Soft-delete supported.
-- **Org Membership Management** — Owners and admins can add, update, and remove members. Users can remove themselves.
-- **Soft Deletes** — Matters, contracts, documents, and other records use `deletedAt` timestamps rather than hard deletes, preserving audit history.
-
-### Scaffolded (Models + Route Shells Exist, Integration Pending)
-
-- **E-Signature Envelopes** — Provider-agnostic envelope model supports DocuSign and HelloSign. Status tracking from `CREATED` through `COMPLETED`/`DECLINED`/`VOIDED`. Real provider SDK calls are TODO.
-- **Billing & Invoicing** — Stripe `PaymentIntent` creation works. Invoice, Payment, and BillingProfile models exist. Stripe webhook handler parses `payment_intent.succeeded` but doesn't yet write back to the DB.
-- **Comments & Mentions** — Comment model links to matters, contracts, contract versions, or documents. Mention model exists for @-tagging users.
-- **Reminders** — `DEADLINE`, `RENEWAL`, `PAYMENT` reminder types linked to contracts. Scheduling/sending is TODO.
-- **Tasks** — Work items linked to matters with assignees and due dates.
-- **Notifications** — `SYSTEM`, `MENTION`, `REMINDER`, `BILLING` types. Models and enums defined; trigger system is TODO.
-- **Audit Logging** — `AuditLog` captures actor, entity type, action (`CREATE`, `UPDATE`, `DELETE`, `LOGIN`, `SIGN`, etc.), before/after JSON snapshots, IP, and User-Agent. Capture calls are TODO.
-- **Clause Library** — Reusable contract clauses with Markdown body, tags, and optional public/org-scoped visibility.
-- **Share Links** — Expiring tokens for sharing contracts or documents with external parties at a specified role level (`viewer`, `commenter`, `editor`).
-- **API Keys** — Per-org API key management with hashed key storage and last-used tracking.
-- **Webhooks** — `WebhookEndpoint` and `WebhookDelivery` models for outbound webhook subscriptions and delivery audit logging.
+- **JWT Authentication** — Register (create/join org), login, refresh-token, `/me`. Passwords hashed with bcrypt. HS256 with RS256/JWKS fallback.
+- **Organizations & Multi-tenancy** — Every resource scoped to an organization. Users belong to multiple orgs with distinct roles per org.
+- **Role-Based Access Control** — System roles (`ADMIN`, `LAWYER`, `PARALEGAL`, `CLIENT`) and org roles (`OWNER`, `ADMIN`, `MEMBER`).
+- **Matters** — Full CRUD with states: `OPEN`, `ON_HOLD`, `CLOSED`. Paginated list with contract/task count badges.
+- **Contracts** — Status workflow: `DRAFT → NEGOTIATION → PENDING_SIGNATURE → EXECUTED → ARCHIVED`. Tracks value in cents + currency.
+- **Contract Versioning** — Immutable version history with S3 key, MIME type, size, author, diff JSON, and AI context.
+- **Document Management** — Upload up to 50 MB to S3/MinIO. Presigned download URLs (5-min expiry). Soft-delete.
+- **Tasks** — Paginated work items linked to matters. Assignee, due date, completion toggle. Overdue detection in UI.
+- **Comments** — Multi-resource comments (matter/contract/version/document). Author-only edit/delete. `editedAt` tracking.
+- **Notifications** — User-scoped notifications with `readAt`, batch mark-all-read, unread count signal in UI.
+- **Clause Library** — Reusable contract clauses (Markdown body, tags). Public or org-scoped visibility. Full-text search.
+- **Org Membership Management** — Owners/admins add, update, and remove members.
+- **Billing** — Stripe `PaymentIntent` creation. Invoice and Payment models exist.
+- **E-Signatures** — Provider-agnostic envelope model (DocuSign/HelloSign). SDK integration pending.
+- **Soft Deletes** — Matters, contracts, documents use `deletedAt` for audit-safe removal.
+- **Compound DB Indexes** — Production-grade indexes on `[organizationId, status]`, `[organizationId, matterId]`, `[organizationId, assigneeId]`, etc.
 
 ---
 
@@ -43,592 +76,358 @@ Monorepo with a Node/Express API, Angular 20 web app, PostgreSQL (via Docker), S
 ```text
 contractcanvas/
 ├─ apps/
-│  ├─ api/                        # Express + Prisma API (TypeScript)
+│  ├─ api/                          # Express + Prisma API
 │  │  ├─ prisma/
-│  │  │  ├─ schema.prisma         # 26-model Prisma schema
-│  │  │  └─ migrations/           # Migration history
-│  │  └─ src/
-│  │     ├─ routes/
-│  │     │  ├─ auth.ts            # /api/auth/*
-│  │     │  ├─ organizations.ts   # /api/organizations/*
-│  │     │  ├─ matters.ts         # /api/matters/*
-│  │     │  ├─ contracts.ts       # /api/contracts/* + versions
-│  │     │  ├─ documents.ts       # /api/documents/*
-│  │     │  ├─ signatures.ts      # /api/signatures/*
-│  │     │  └─ billing.ts         # /api/billing/*
-│  │     ├─ middleware/
-│  │     │  └─ auth.ts            # protect, optionalAuth, requireRole
-│  │     ├─ prisma.ts             # Prisma client singleton
-│  │     └─ server.ts             # Express bootstrap, error handler
-│  └─ web/                        # Angular 20 SPA
+│  │  │  ├─ schema.prisma           # 26-model schema
+│  │  │  ├─ seed.ts                 # Dev seed (alice/bob/carol + sample data)
+│  │  │  └─ migrations/
+│  │  ├─ src/
+│  │  │  ├─ config.ts               # Env vars (JWT, DB, S3, Stripe)
+│  │  │  ├─ server.ts               # Express app bootstrap
+│  │  │  ├─ prisma.ts               # Prisma client singleton
+│  │  │  ├─ middleware/
+│  │  │  │  └─ auth.ts              # protect() + JWT decode
+│  │  │  └─ routes/
+│  │  │     ├─ auth.ts              # /api/auth
+│  │  │     ├─ matters.ts           # /api/matters
+│  │  │     ├─ contracts.ts         # /api/contracts
+│  │  │     ├─ documents.ts         # /api/documents
+│  │  │     ├─ tasks.ts             # /api/tasks
+│  │  │     ├─ comments.ts          # /api/comments
+│  │  │     ├─ notifications.ts     # /api/notifications
+│  │  │     ├─ clauses.ts           # /api/clauses
+│  │  │     ├─ organizations.ts     # /api/organizations
+│  │  │     ├─ signatures.ts        # /api/signatures
+│  │  │     └─ billing.ts           # /api/billing
+│  │  ├─ Dockerfile                 # Multi-stage Node 20 → Alpine runner
+│  │  └─ vitest.config.ts
+│  │
+│  └─ web/                          # Angular 20 SPA
 │     └─ src/app/
-│        ├─ pages/
-│        │  ├─ login/             # Login page (Material)
-│        │  ├─ register/          # Register page (create or join org)
-│        │  ├─ dashboard/         # Protected home page
-│        │  ├─ matter-list/       # List all matters
-│        │  └─ matter-detail/     # Single matter view
-│        ├─ services/
-│        │  ├─ auth.service.ts    # JWT storage, login/register/me, user signal
-│        │  └─ matter.service.ts  # getMatters, getMatter
 │        ├─ guards/
-│        │  └─ auth-guard.ts      # CanActivateFn redirecting to /login
+│        │  └─ auth-guard.ts
 │        ├─ interceptors/
-│        │  └─ jwt.interceptor.ts # Injects Bearer token on /api/* requests
-│        ├─ app.routes.ts         # Route definitions
-│        └─ app.config.ts         # Angular bootstrap config
-├─ packages/
-│  └─ shared-ts/                  # Shared TypeScript utilities (minimal)
+│        │  ├─ jwt.interceptor.ts   # Attaches Bearer token + X-Organization-Id
+│        │  └─ error.interceptor.ts # Global 401/403/500 handler; auto-logout
+│        ├─ services/
+│        │  ├─ auth.service.ts
+│        │  ├─ matter.service.ts
+│        │  ├─ contract.service.ts
+│        │  ├─ document.service.ts
+│        │  ├─ task.service.ts
+│        │  ├─ notification.service.ts
+│        │  ├─ organization.service.ts
+│        │  └─ billing.service.ts
+│        └─ pages/
+│           ├─ login/
+│           ├─ register/
+│           ├─ dashboard/
+│           ├─ matter-list/
+│           ├─ matter-detail/       # Tabbed: Contracts | Documents | Tasks
+│           ├─ contract-list/
+│           ├─ contract-detail/
+│           ├─ tasks/
+│           ├─ billing/
+│           └─ organization-settings/
+│
 ├─ infra/
-│  └─ docker-compose.yml          # PostgreSQL 16 + MinIO containers
-├─ scripts/
-│  └─ config-to-env.mjs           # Generates env files from config.json
-├─ config.json                    # Centralized app/db/s3/stripe/jwt config
-└─ package.json                   # Root workspace scripts
+│  └─ docker-compose.yml            # postgres, minio, api (profile), web (profile)
+│
+├─ .github/workflows/
+│  ├─ ci.yml                        # Lint + test + build + Docker verify
+│  ├─ deploy-dev.yml                # Push to develop → deploy to dev
+│  ├─ deploy-qa.yml                 # Push to release/** → deploy to QA
+│  └─ deploy-prod.yml               # Version tag → prod (requires DEPLOY confirmation)
+│
+└─ package.json                     # npm workspaces root
 ```
-
----
-
-## Tech Stack
-
-| Layer          | Technology                                            |
-| -------------- | ----------------------------------------------------- |
-| API runtime    | Node.js 20+, TypeScript, Express 4                    |
-| ORM            | Prisma 5 (PostgreSQL 16)                              |
-| Validation     | Zod                                                   |
-| Auth           | jsonwebtoken + jose (RS256/HS256), bcrypt             |
-| File uploads   | Multer (memory storage)                               |
-| Object storage | AWS S3 SDK v3 / MinIO                                 |
-| Payments       | Stripe SDK v19                                        |
-| Frontend       | Angular 20, Angular Material 20                       |
-| HTTP client    | Angular HttpClient with functional interceptors       |
-| Forms          | Angular ReactiveFormsModule                           |
-| Reactive state | Angular signals (`currentUser` signal in AuthService) |
-| Dev infra      | Docker Compose, tsx, concurrently                     |
-| Build          | Angular CLI + Vite (web), tsc (API)                   |
-| Testing        | Jest via `@angular-builders/jest` (web)               |
-
----
-
-## Database Models (26)
-
-| Model                | Purpose                                                         |
-| -------------------- | --------------------------------------------------------------- |
-| `User`               | User accounts — email, bcrypt password hash, name, system role  |
-| `Organization`       | Tenant orgs — name, slug (unique)                               |
-| `OrganizationMember` | Many-to-many: user ↔ org with org-level role                    |
-| `Session`            | Login session tracking — IP, User-Agent, expiry                 |
-| `Matter`             | Legal matters/cases — title, status, owner, org                 |
-| `MatterParticipant`  | Many-to-many: user ↔ matter collaborators                       |
-| `Contract`           | Contracts — title, status, value in cents, matter link          |
-| `ContractVersion`    | Immutable version history — S3 key, diff JSON, AI context       |
-| `Tag`                | Org-scoped categorization labels                                |
-| `ContractVersionTag` | Many-to-many: version ↔ tag                                     |
-| `Clause`             | Reusable Markdown clause library                                |
-| `Document`           | File metadata — S3 key, MIME type, size, kind, status           |
-| `Comment`            | Threaded comments on matters/contracts/versions/documents       |
-| `Mention`            | User @-mentions inside comments                                 |
-| `SignatureEnvelope`  | E-signature workflow — provider, recipients, status             |
-| `Reminder`           | Due-date reminders (DEADLINE, RENEWAL, PAYMENT)                 |
-| `Task`               | Work items linked to matters with assignees                     |
-| `BillingProfile`     | Stripe customer ID per org/user, tax ID, address                |
-| `Invoice`            | Billing records — Stripe ID, status, amounts, due date          |
-| `Payment`            | Individual payment transactions — Stripe PaymentIntent ID       |
-| `ShareLink`          | Expiring/one-time share tokens with role-level access           |
-| `ApiKey`             | Per-org hashed API keys with last-used tracking                 |
-| `WebhookEndpoint`    | Outbound webhook subscriptions per org                          |
-| `WebhookDelivery`    | Webhook delivery audit log — request/response bodies, retries   |
-| `Notification`       | User notifications (SYSTEM, MENTION, REMINDER, BILLING)         |
-| `AuditLog`           | Full audit trail — actor, entity, action, before/after JSON, IP |
 
 ---
 
 ## API Reference
 
-All protected routes require `Authorization: Bearer <token>`.
+All protected routes require:
 
-### Auth
+- `Authorization: Bearer <token>`
+- `X-Organization-Id: <orgId>`
 
-| Method | Path                 | Auth | Description                                 |
-| ------ | -------------------- | ---- | ------------------------------------------- |
-| POST   | `/api/auth/register` | No   | Create account + org (or join existing org) |
-| POST   | `/api/auth/login`    | No   | Login; returns JWT (1-day expiry)           |
-| GET    | `/api/auth/me`       | Yes  | Fetch authenticated user details            |
+### Auth — `/api/auth`
 
-### Organizations
+| Method | Path | Auth | Description |
+| ------ | ---- | ---- | ----------- |
+| POST | `/register` | — | Create account and org |
+| POST | `/login` | — | Get JWT |
+| POST | `/refresh-token` | Bearer | Re-issue JWT with current memberships |
+| GET | `/me` | Bearer | Current user profile |
 
-| Method | Path                                          | Auth                      | Description                            |
-| ------ | --------------------------------------------- | ------------------------- | -------------------------------------- |
-| POST   | `/api/organizations`                          | Yes                       | Create a new organization              |
-| GET    | `/api/organizations/me`                       | Yes                       | List organizations the user belongs to |
-| GET    | `/api/organizations/:orgId/members`           | Yes                       | List members of an org                 |
-| POST   | `/api/organizations/:orgId/members`           | Yes (OWNER/ADMIN)         | Add a member                           |
-| PATCH  | `/api/organizations/:orgId/members/:memberId` | Yes (OWNER/ADMIN)         | Update a member's role                 |
-| DELETE | `/api/organizations/:orgId/members/:memberId` | Yes (OWNER/ADMIN or self) | Remove a member                        |
+### Matters — `/api/matters`
 
-### Matters
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List matters (paginated, `?status=&limit=&offset=`) |
+| POST | `/` | Create matter |
+| GET | `/:id` | Get matter (includes contracts, documents, tasks) |
+| PATCH | `/:id` | Update matter |
+| DELETE | `/:id` | Soft-delete matter |
 
-| Method | Path               | Auth | Description                            |
-| ------ | ------------------ | ---- | -------------------------------------- |
-| GET    | `/api/matters`     | Yes  | List matters                           |
-| POST   | `/api/matters`     | Yes  | Create a matter                        |
-| GET    | `/api/matters/:id` | Yes  | Get a single matter                    |
-| PATCH  | `/api/matters/:id` | Yes  | Update matter title/description/status |
-| DELETE | `/api/matters/:id` | Yes  | Soft-delete a matter                   |
+### Contracts — `/api/contracts`
 
-### Contracts
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List contracts (`?matterId=&status=&limit=&offset=`) |
+| POST | `/` | Create contract |
+| GET | `/:id` | Get contract with versions |
+| PATCH | `/:id` | Update status / fields |
+| DELETE | `/:id` | Soft-delete contract |
+| GET | `/:id/versions` | List versions |
+| POST | `/:id/versions` | Add version |
 
-| Method | Path                                  | Auth | Description                                              |
-| ------ | ------------------------------------- | ---- | -------------------------------------------------------- |
-| GET    | `/api/contracts`                      | Yes  | List contracts (includes matter info)                    |
-| POST   | `/api/contracts`                      | Yes  | Create a contract                                        |
-| GET    | `/api/contracts/:id`                  | Yes  | Get contract with versions + current version             |
-| PATCH  | `/api/contracts/:id`                  | Yes  | Update contract status/value/title                       |
-| DELETE | `/api/contracts/:id`                  | Yes  | Soft-delete a contract                                   |
-| POST   | `/api/contracts/:contractId/versions` | Yes  | Add a new version (atomically increments version number) |
-| GET    | `/api/contracts/:contractId/versions` | Yes  | List all versions (newest first)                         |
+### Documents — `/api/documents`
 
-### Documents
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | `/upload` | Upload file (multipart, `?matterId=`) |
+| GET | `/` | List documents (`?matterId=`) |
+| GET | `/:id` | Get document metadata |
+| GET | `/:id/download` | Get presigned download URL |
+| DELETE | `/:id` | Soft-delete document |
 
-| Method | Path                          | Auth | Description                                        |
-| ------ | ----------------------------- | ---- | -------------------------------------------------- |
-| POST   | `/api/documents/upload`       | Yes  | Upload file (multipart/form-data, 50 MB max) to S3 |
-| GET    | `/api/documents`              | Yes  | List documents for a matter (`?matterId=<id>`)     |
-| GET    | `/api/documents/:id`          | Yes  | Get document metadata                              |
-| GET    | `/api/documents/:id/download` | Yes  | Get presigned S3 URL (5-minute expiry)             |
-| DELETE | `/api/documents/:id`          | Yes  | Soft-delete a document                             |
+### Tasks — `/api/tasks`
 
-**S3 key format:** `orgs/{orgId}/matters/{matterId}/{timestamp}-{random}.{ext}`
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List tasks (`?matterId=&assigneeId=&completed=&limit=&offset=`) |
+| POST | `/` | Create task |
+| GET | `/:id` | Get task |
+| PATCH | `/:id` | Update task (set `completedAt` to mark done) |
+| DELETE | `/:id` | Delete task |
 
-### Signatures
+### Comments — `/api/comments`
 
-| Method | Path                  | Auth | Description                         |
-| ------ | --------------------- | ---- | ----------------------------------- |
-| POST   | `/api/signatures`     | Yes  | Create a signature envelope         |
-| GET    | `/api/signatures`     | Yes  | List envelopes (`?contractId=<id>`) |
-| GET    | `/api/signatures/:id` | Yes  | Get envelope status and details     |
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List comments (`?matterId=&contractId=&documentId=&limit=&offset=`) |
+| POST | `/` | Create comment (requires one resource id) |
+| PATCH | `/:id` | Edit comment (author only) |
+| DELETE | `/:id` | Delete comment (author only) |
 
-### Billing
+### Notifications — `/api/notifications`
 
-| Method | Path                           | Auth | Description                                            |
-| ------ | ------------------------------ | ---- | ------------------------------------------------------ |
-| POST   | `/api/billing/invoice`         | Yes  | Create a Stripe PaymentIntent; returns `client_secret` |
-| POST   | `/api/billing/webhooks/stripe` | No   | Stripe webhook receiver (raw body)                     |
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List notifications (`?unread=true&limit=&offset=`) + `unreadCount` in response |
+| PATCH | `/read-all` | Mark all unread as read |
+| PATCH | `/:id/read` | Mark one notification as read |
 
----
+### Clause Library — `/api/clauses`
 
-## Prerequisites
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List clauses (`?q=&limit=&offset=`) — org + public |
+| POST | `/` | Create clause |
+| GET | `/:id` | Get clause |
+| PATCH | `/:id` | Update clause (org-owned only) |
+| DELETE | `/:id` | Delete clause (org-owned only) |
 
-- **Node.js** 20+ (LTS recommended)
-- **Docker** and **Docker Compose**
-- **npm** (root uses npm workspaces)
+### Organizations — `/api/organizations`
 
----
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | List orgs for current user |
+| GET | `/:id/members` | List org members |
+| POST | `/:id/members` | Add member by email |
+| PATCH | `/:id/members/:userId` | Update member role |
+| DELETE | `/:id/members/:userId` | Remove member |
 
-## Configuration
+### Billing — `/api/billing`
 
-All local configuration lives in `config.json` at the repo root. Copy and fill in your values:
-
-```json
-{
-  "app": { "env": "development", "port": 3333 },
-  "db": {
-    "user": "contractcanvas",
-    "password": "your-db-password",
-    "name": "contractcanvas_db",
-    "port": 5432,
-    "container_name": "contractcanvas-postgres"
-  },
-  "s3": {
-    "endpoint": "http://localhost:9000",
-    "region": "us-east-1",
-    "bucket": "contractcanvas",
-    "accessKey": "your-minio-access-key",
-    "secretKey": "your-minio-secret-key",
-    "forcePathStyle": true
-  },
-  "stripe": {
-    "secretKey": "sk_test_...",
-    "webhookSecret": "whsec_..."
-  },
-  "jwt": { "secret": "a-strong-secret-at-least-32-chars" }
-}
-```
-
-Then generate the env files that Prisma and Docker Compose need:
-
-```bash
-npm run config:env
-```
-
-This writes:
-
-- `apps/api/prisma/.env` — `DATABASE_URL` for Prisma
-- `infra/.env` — variables for Docker Compose
-
-> **Important:** Do **not** define `DATABASE_URL` in the repo root `.env`. Prisma will complain about conflicting env sources. Keep it in `apps/api/prisma/.env` only (generated by `config:env`).
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | `/invoice` | Create Stripe PaymentIntent, returns `clientSecret` |
 
 ---
 
-## Quick Start (Local Development)
-
-1. **Generate env files from config.json**
-
-   ```bash
-   npm run config:env
-   ```
-
-2. **Start infrastructure (PostgreSQL + MinIO)**
-
-   ```bash
-   npm run up
-   ```
-
-3. **Install dependencies**
-
-   ```bash
-   npm install
-   cd apps/api && npm install
-   cd ../web && npm install
-   cd ../..
-   ```
-
-4. **Generate the Prisma client and apply migrations**
-
-   ```bash
-   npm run prisma:generate
-   npm run prisma:migrate
-   ```
-
-5. **Run both API and web in parallel**
-
-   ```bash
-   npm run dev
-   ```
-
-   - API: `http://localhost:3333`
-   - Web: `http://localhost:4200`
-
-6. **Verify**
-
-   ```bash
-   curl -i http://localhost:3333/health
-   # or via the Angular proxy:
-   curl -i http://localhost:4200/api/health
-   ```
-
----
-
-## Auth Flow
-
-### Roles
-
-**System roles** (assigned at registration, stored on the `User` model):
-
-| Role        | Description                                               |
-| ----------- | --------------------------------------------------------- |
-| `ADMIN`     | Full system access                                        |
-| `LAWYER`    | Legal professional — full contract and matter access      |
-| `PARALEGAL` | Support role — similar to Lawyer with reduced permissions |
-| `CLIENT`    | Client-side user — limited, read-oriented access          |
-
-**Org roles** (assigned per membership, stored on `OrganizationMember`):
-
-| Role     | Description                                               |
-| -------- | --------------------------------------------------------- |
-| `OWNER`  | Created the org; full control including member management |
-| `ADMIN`  | Can manage members and all org resources                  |
-| `MEMBER` | Standard membership; cannot manage other members          |
-
-### Register — create a new org
-
-```bash
-curl -i -X POST http://localhost:4200/api/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "email": "alice@acme.com",
-    "password": "Password1!",
-    "confirmPassword": "Password1!",
-    "name": { "firstName": "Alice", "lastName": "Smith" },
-    "role": "LAWYER",
-    "orgMode": "create",
-    "organizationName": "ACME Legal",
-    "organizationSlug": "acme-legal",
-    "acceptTerms": true
-  }'
-```
-
-Response `201`:
-
-```json
-{
-  "message": "Registration successful",
-  "user": { "id": "...", "email": "alice@acme.com", ... },
-  "organization": { "id": "...", "slug": "acme-legal", ... },
-  "redirectTo": "/login"
-}
-```
-
-Append `?autoLogin=1` to also receive a `"token"` in the response.
-
-### Register — join an existing org
-
-```bash
-curl -i -X POST http://localhost:4200/api/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "email": "bob@acme.com",
-    "password": "Password1!",
-    "confirmPassword": "Password1!",
-    "name": { "firstName": "Bob", "lastName": "Jones" },
-    "role": "CLIENT",
-    "orgMode": "join",
-    "organizationSlug": "acme-legal",
-    "acceptTerms": true
-  }'
-```
-
-### Login
-
-```bash
-curl -s -X POST http://localhost:4200/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email": "alice@acme.com", "password": "Password1!"}'
-# => { "token": "eyJ..." }
-```
-
-### Fetch current user
-
-```bash
-curl -s http://localhost:4200/api/auth/me \
-  -H "Authorization: Bearer <token>"
-```
-
-### JWT verification
-
-The middleware tries RS256 with a remote JWKS first (configured via `JWT_JWKS_URI` env var), then falls back to HS256 using `jwt.secret` from `config.json`. This allows drop-in compatibility with OpenID Connect providers (Auth0, Cognito, etc.) without code changes.
-
----
-
-## Sample API Calls
-
-### Create a matter
-
-```bash
-curl -s -X POST http://localhost:3333/api/matters \
-  -H "Authorization: Bearer <token>" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "title": "Smith v. Jones",
-    "description": "Contract dispute",
-    "status": "OPEN",
-    "organizationId": "<org-cuid>"
-  }'
-```
-
-### Create a contract under a matter
-
-```bash
-curl -s -X POST http://localhost:3333/api/contracts \
-  -H "Authorization: Bearer <token>" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "title": "Settlement Agreement",
-    "matterId": "<matter-cuid>",
-    "valueCents": 500000,
-    "currency": "USD"
-  }'
-```
-
-### Add a contract version (after uploading the file as a document)
-
-```bash
-curl -s -X POST http://localhost:3333/api/contracts/<contract-id>/versions \
-  -H "Authorization: Bearer <token>" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "storageKey": "orgs/<org-id>/matters/<matter-id>/1710000000-abc123.pdf",
-    "mimeType": "application/pdf",
-    "sizeBytes": 204800,
-    "title": "Version 1 — initial draft"
-  }'
-```
-
-### Upload a document
-
-```bash
-curl -i -X POST http://localhost:3333/api/documents/upload \
-  -H "Authorization: Bearer <token>" \
-  -F "file=@/path/to/contract.pdf" \
-  -F "matterId=<matter-cuid>" \
-  -F "organizationId=<org-cuid>" \
-  -F "kind=UPLOADED"
-```
-
-### Get a presigned download URL
-
-```bash
-curl -s http://localhost:3333/api/documents/<doc-id>/download \
-  -H "Authorization: Bearer <token>"
-# => { "url": "http://localhost:9000/contractcanvas/...?X-Amz-Signature=..." }
-```
-
-### Create a Stripe PaymentIntent
-
-```bash
-curl -s -X POST http://localhost:3333/api/billing/invoice \
-  -H "Authorization: Bearer <token>" \
-  -H 'Content-Type: application/json' \
-  -d '{ "amount_cents": 150000, "currency": "usd" }'
-# => { "client_secret": "pi_...secret_..." }
-```
-
----
-
-## Angular Web App
+## Angular Pages & Services
 
 ### Pages
 
-| Route          | Component               | Guard       | Description                                         |
-| -------------- | ----------------------- | ----------- | --------------------------------------------------- |
-| `/login`       | `LoginComponent`        | —           | Email/password login with Material UI               |
-| `/register`    | `RegisterComponent`     | —           | Registration with create-or-join org flow           |
-| `/dashboard`   | `DashboardComponent`    | `authGuard` | Home after login; shows current user                |
-| `/matters`     | `MatterListComponent`   | `authGuard` | Paginated/sortable matter table                     |
-| `/matters/:id` | `MatterDetailComponent` | `authGuard` | Matter detail with contracts, docs, tasks, comments |
+| Route | Component | Description |
+| ----- | --------- | ----------- |
+| `/login` | LoginComponent | Email + password form |
+| `/register` | RegisterComponent | Account creation |
+| `/dashboard` | DashboardComponent | Live stats, pending tasks, quick actions |
+| `/matters` | MatterListComponent | Paginated matter list with count badges |
+| `/matters/:id` | MatterDetailComponent | Tabbed: Contracts, Documents, Tasks |
+| `/contracts` | ContractListComponent | Paginated contract list with status filter |
+| `/contracts/:id` | ContractDetailComponent | Contract detail with version history |
+| `/tasks` | TasksComponent | Filterable task list with completion toggle |
+| `/billing` | BillingComponent | Invoice creation via Stripe |
+| `/settings/organization` | OrganizationSettingsComponent | Member table + invite |
 
-### Key services
+### Services
 
-**`AuthService`** (`services/auth.service.ts`)
+| Service | Key Methods |
+| ------- | ----------- |
+| `AuthService` | `login`, `register`, `logout`, `refreshToken`, `currentUser` signal |
+| `MatterService` | `getMatters`, `getMatter`, `createMatter`, `updateMatter`, `deleteMatter` |
+| `ContractService` | `getContracts`, `getContract`, `createContract`, `updateContract`, `deleteContract`, `getVersions`, `addVersion` |
+| `DocumentService` | `uploadDocument`, `getDocuments`, `getDocument`, `getDownloadUrl`, `deleteDocument` |
+| `TaskService` | `getTasks`, `createTask`, `updateTask`, `completeTask`, `reopenTask`, `deleteTask` |
+| `NotificationService` | `getNotifications`, `markRead`, `markAllRead`, `unreadCount` signal |
+| `OrganizationService` | `getMyOrganizations`, `getMembers`, `addMember`, `updateMember`, `removeMember` |
+| `BillingService` | `createInvoice` |
 
-- Token stored in `localStorage` under key `contractcanvas_auth_token`
-- Exposes `currentUser` as an Angular signal for reactive templates
-- Methods: `register`, `login`, `getMe`, `logout`, `getToken`, `isLoggedIn`
+### Interceptors
 
-**`MatterService`** (`services/matter.service.ts`)
-
-- Methods: `getMatters()`, `getMatter(id)`
-
-### HTTP interceptor
-
-`jwtInterceptor` is a functional `HttpInterceptorFn` that injects `Authorization: Bearer <token>` on every request to `/api/*`.
-
-### Dev proxy
-
-`proxy.conf.json` forwards `/api` from port 4200 to port 3333:
-
-```json
-{
-  "/api": {
-    "target": "http://localhost:3333",
-    "secure": false,
-    "changeOrigin": true
-  }
-}
-```
-
-This is wired in `angular.json` under `serve > options > proxyConfig`.
+| Interceptor | Behavior |
+| ----------- | -------- |
+| `JwtInterceptor` | Attaches `Authorization: Bearer <token>` and `X-Organization-Id` to every outbound request |
+| `ErrorInterceptor` | 401 → auto-logout + redirect to `/login`; 403/500 → surface error message |
 
 ---
 
-## Scripts Reference
+## Getting Started
+
+### Prerequisites
+
+- Node 20+
+- Docker + Docker Compose
+
+### Local Development
 
 ```bash
-# Config
-npm run config:env           # Generate prisma/.env and infra/.env from config.json
+# 1. Install dependencies
+npm install
 
-# Prisma
-npm run prisma:generate      # Generate Prisma client from schema
-npm run prisma:migrate       # Apply pending migrations
-npm run prisma:push          # Sync schema without migration (dev only, no history)
-npm run prisma:studio        # Open Prisma Studio at http://localhost:5555
+# 2. Start infrastructure (Postgres + MinIO)
+docker compose -f infra/docker-compose.yml up -d
 
-# Infrastructure (Docker)
-npm run up                   # Start PostgreSQL + MinIO containers
-npm run down                 # Stop and remove containers + volumes (data loss)
-npm run down:keep            # Stop containers but keep volumes
+# 3. Run migrations + seed
+cd apps/api
+npx prisma migrate dev
+npx prisma db seed
 
-# Development
-npm run dev                  # Start API + web concurrently
-npm run dev:api              # API only (tsx watch on apps/api/src/server.ts)
-npm run dev:web              # Web only (ng serve on port 4200 with proxy)
+# 4. Start API (port 3333)
+npm run dev -w apps/api
 
-# Build (production)
-npm run -w apps/api build    # Compile API TypeScript → apps/api/dist/
-npm run -w apps/web build    # Build Angular SPA → apps/web/dist/
+# 5. Start Angular dev server (port 4200)
+npm run start -w apps/web
 ```
+
+Open [http://localhost:4200](http://localhost:4200). Log in with any seed account (see below).
+
+### Seed Accounts
+
+| Email | Password | Role |
+| ----- | -------- | ---- |
+| `alice@acme.law` | `Password123!` | OWNER (Acme Law Firm) |
+| `bob@acme.law` | `Password123!` | MEMBER (LAWYER) |
+| `carol@acme.law` | `Password123!` | MEMBER (PARALEGAL) |
+
+Seed also creates 2 matters, 2 contracts, 3 tasks, 3 clauses (1 public), and 2 notifications.
 
 ---
 
-## Prisma & Database
-
-**Reset and start fresh** (destroys all data):
+## Running Tests
 
 ```bash
-npm run down
-npm run up
-npm run prisma:migrate
+# API tests (Vitest)
+npm test -w apps/api
+
+# Web tests (Jest via @angular-builders/jest)
+npm test -w apps/web
+
+# All tests from root
+npm test
 ```
 
-**Open Prisma Studio** (visual DB browser):
+---
+
+## Production Build
+
+### Docker Compose (full stack)
 
 ```bash
-npm run prisma:studio
-# → http://localhost:5555
+docker compose -f infra/docker-compose.yml --profile full up -d
 ```
 
-**Migration workflow:**
+Profiles: `full` (all services), `prod`, `qa`, `staging` (infrastructure only by default).
+
+### Individual Images
 
 ```bash
-# After editing apps/api/prisma/schema.prisma:
-npm run -w apps/api exec -- npx prisma migrate dev --name describe_your_change
-npm run prisma:generate
+# API
+docker build -t contractcanvas-api apps/api
+
+# Web
+docker build -t contractcanvas-web apps/web
 ```
 
 ---
 
-## Troubleshooting
+## CI/CD Pipeline
 
-| Symptom                          | Fix                                                                                                                                                                     |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `404` on `/api/*` via port 4200  | Angular proxy not running or misconfigured. Check `proxy.conf.json` and restart `npm run dev:web`.                                                                      |
-| Prisma `P2021` (table not found) | Run `npm run prisma:migrate`.                                                                                                                                           |
-| Prisma `DATABASE_URL` conflict   | Remove `DATABASE_URL` from the repo root `.env`; it belongs only in `apps/api/prisma/.env` (generated by `config:env`).                                                 |
-| Multer/TypeScript type errors    | Run `rm -rf node_modules apps/api/node_modules apps/web/node_modules package-lock.json && npm install`.                                                                 |
-| MinIO bucket not found           | Create the bucket via the MinIO console at `http://localhost:9001` or with the `mc` CLI. The bucket name must match `s3.bucket` in `config.json`.                       |
-| Stripe webhook signature invalid | Ensure `express.raw()` body parser is used on `/api/billing/webhooks/stripe` (already configured). Confirm `stripe.webhookSecret` matches your Stripe dashboard secret. |
-| JWT verification fails           | Check that `jwt.secret` in `config.json` matches the secret used to sign tokens. For RS256/JWKS, set `JWT_JWKS_URI` env var to your provider's JWKS endpoint.           |
+### Workflows
 
----
+| File | Trigger | What it does |
+| ---- | ------- | ------------ |
+| `ci.yml` | Every push / PR | API lint + test + build; Web lint + test + build; Docker image verification |
+| `deploy-dev.yml` | Push to `develop` | Build + push to GHCR with `:dev` tag; SSH deploy with `--profile full` |
+| `deploy-qa.yml` | Push to `release/**` | Build + push with `:qa` tag; smoke-test loop (5 retries); SSH deploy |
+| `deploy-prod.yml` | Version tag `v*.*.*` | Guard job requires `confirm == 'DEPLOY'`; build + push `:latest`; health check; GitHub Release |
 
-## Security Notes
+### Required Secrets
 
-- Never commit `config.json` with real secrets. Use it only for local development.
-- In production, provide secrets via environment variables (`JWT_SECRET`, `DATABASE_URL`, `STRIPE_SECRET_KEY`, `S3_ACCESS_KEY`, etc.).
-- `JWT_SECRET` must be a strong, random string (32+ characters) in production.
-- Tighten CORS origins in `apps/api/src/server.ts` before deploying publicly.
-- S3 bucket policies should restrict public access; use presigned URLs for all downloads.
+**Dev:** `DEV_HOST`, `DEV_USER`, `DEV_SSH_KEY`, `DEV_POSTGRES_USER`, `DEV_POSTGRES_PASSWORD`, `DEV_POSTGRES_DB`, `DEV_JWT_SECRET`, `DEV_S3_ACCESS_KEY`, `DEV_S3_SECRET_KEY`
 
----
+**QA:** `QA_HOST`, `QA_USER`, `QA_SSH_KEY`, `QA_POSTGRES_*`, `QA_JWT_SECRET`, `QA_S3_*`, `QA_STRIPE_SECRET_KEY`, `QA_STRIPE_WEBHOOK_SECRET`
 
-## Production Deployment (Outline)
+**Prod:** `PROD_HOST`, `PROD_USER`, `PROD_SSH_KEY`, `PROD_POSTGRES_*`, `PROD_JWT_SECRET`, `PROD_S3_*`, `PROD_STRIPE_SECRET_KEY`, `PROD_STRIPE_WEBHOOK_SECRET`
 
-1. Fill in production values and run `npm run config:env`, or supply env vars directly.
-2. Build the API: `npm run -w apps/api build` → serves from `apps/api/dist/server.js`
-3. Build the web: `npm run -w apps/web build` → static assets in `apps/web/dist/`
-4. Serve the API behind a reverse proxy (nginx, Caddy) with HTTPS termination.
-5. Serve the web static assets from the same reverse proxy or a CDN, with `/api/*` proxied to the API.
-6. Use a managed PostgreSQL instance and AWS S3 (set `s3.forcePathStyle: false`, remove `s3.endpoint`).
-7. Configure Stripe webhook endpoint to point to `https://yourdomain.com/api/billing/webhooks/stripe`.
+**GitHub Environment Variables:** `DEV_URL`, `DEV_API_URL`, `QA_URL`, `QA_API_URL`, `PROD_URL`, `PROD_API_URL`
 
 ---
 
-## Contributing
+## Environment Variables
 
-Issues and PRs are welcome. Please keep commits scoped to a single concern and include manual testing steps or automated tests where applicable.
+### API (`apps/api/.env`)
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/contractcanvas
+JWT_SECRET=your-secret-here
+FRONTEND_URL=http://localhost:4200
+PORT=3333
+NODE_ENV=development
+
+# S3 / MinIO
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=contractcanvas
+S3_REGION=us-east-1
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+### Web (`apps/web/src/environments/`)
+
+The Angular app reads the API base URL from the environment file. In development, the proxy config in `angular.json` handles `/api` → `localhost:3333`.
 
 ---
 
-## License
+## Pending / Future Work
 
-MIT
+- E-signature provider SDK integration (DocuSign / HelloSign)
+- Billing webhook: update Invoice/Payment in DB on `payment_intent.succeeded`
+- Comments UI embedded in matter-detail and contract-detail
+- WebSocket or SSE for real-time notifications
+- E2E tests (Playwright or Cypress)
+- Token blacklist (Redis) for logout invalidation
+- Input sanitization on all Markdown fields
+- File type validation allowlist on document upload
+- Global search across matters/contracts/documents
+- Dark mode Material theme toggle
+- Reminder scheduling (node-cron or Bull)
+- Share link creation and validation

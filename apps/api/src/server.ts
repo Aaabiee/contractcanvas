@@ -32,8 +32,8 @@ app.use(cors({
 app.use(morgan('dev'));
 
 const authLimiter = rateLimit({
-  windowMs:         15 * 60 * 1000, // 15 minutes
-  max:              20,              // max 20 requests per window per IP
+  windowMs:         15 * 60 * 1000,
+  max:              20,
   standardHeaders:  true,
   legacyHeaders:    false,
   message:          { error: 'too_many_requests', message: 'Too many requests, please try again later.' },

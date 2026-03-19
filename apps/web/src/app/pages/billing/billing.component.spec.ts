@@ -12,26 +12,27 @@ const mockInvoice = { clientSecret: 'pi_test_secret', invoiceId: 'inv-1', amount
 describe('BillingComponent', () => {
   let fixture: ComponentFixture<BillingComponent>;
   let component: BillingComponent;
-  let billingService: jest.Mocked<BillingService>;
-  let snack: jest.Mocked<MatSnackBar>;
+  let billingServiceMock: { createInvoice: jest.Mock };
+  let snackMock: { open: jest.Mock };
 
   beforeEach(async () => {
-    const billingMock = { createInvoice: jest.fn() };
-    const snackMock   = { open: jest.fn() };
+    billingServiceMock = { createInvoice: jest.fn() };
+    snackMock          = { open: jest.fn() };
 
     await TestBed.configureTestingModule({
       imports: [BillingComponent],
       providers: [
         provideHttpClient(), provideHttpClientTesting(), provideAnimations(),
-        { provide: BillingService, useValue: billingMock },
-        { provide: MatSnackBar,    useValue: snackMock },
+        { provide: BillingService, useValue: billingServiceMock },
       ],
-    }).compileComponents();
+    })
+      .overrideComponent(BillingComponent, {
+        add: { providers: [{ provide: MatSnackBar, useValue: snackMock }] },
+      })
+      .compileComponents();
 
-    billingService = TestBed.inject(BillingService) as jest.Mocked<BillingService>;
-    snack          = TestBed.inject(MatSnackBar) as jest.Mocked<MatSnackBar>;
-    fixture        = TestBed.createComponent(BillingComponent);
-    component      = fixture.componentInstance;
+    fixture   = TestBed.createComponent(BillingComponent);
+    component = fixture.componentInstance;
     fixture.detectChanges();
   });
 
@@ -42,20 +43,20 @@ describe('BillingComponent', () => {
   });
 
   it('should call createInvoice with correct payload', () => {
-    billingService.createInvoice.mockReturnValue(of(mockInvoice));
+    billingServiceMock.createInvoice.mockReturnValue(of(mockInvoice));
     component.invoiceForm.setValue({ contractId: 'contract-1', amount: 500, currency: 'usd' });
     component.createInvoice();
-    expect(billingService.createInvoice).toHaveBeenCalledWith({
+    expect(billingServiceMock.createInvoice).toHaveBeenCalledWith({
       contractId: 'contract-1', amountCents: 50000, currency: 'usd',
     });
     expect(component.invoiceResult()).toEqual(mockInvoice);
   });
 
   it('should show error on failure', () => {
-    billingService.createInvoice.mockReturnValue(throwError(() => ({ error: { message: 'Stripe error' } })));
+    billingServiceMock.createInvoice.mockReturnValue(throwError(() => ({ error: { message: 'Stripe error' } })));
     component.invoiceForm.setValue({ contractId: 'c-1', amount: 100, currency: 'usd' });
     component.createInvoice();
-    expect(snack.open).toHaveBeenCalledWith('Stripe error', 'Dismiss', expect.any(Object));
+    expect(snackMock.open).toHaveBeenCalledWith('Stripe error', 'Dismiss', expect.any(Object));
     expect(component.submitting()).toBe(false);
   });
 });

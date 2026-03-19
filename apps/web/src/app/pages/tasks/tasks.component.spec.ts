@@ -5,6 +5,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 const mockTasks = [
@@ -33,10 +34,14 @@ describe('TasksComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideAnimations(),
-        { provide: TaskService,  useValue: taskServiceMock },
-        { provide: MatSnackBar, useValue: snackMock },
+        provideRouter([]),
+        { provide: TaskService, useValue: taskServiceMock },
       ],
-    }).compileComponents();
+    })
+      .overrideComponent(TasksComponent, {
+        add: { providers: [{ provide: MatSnackBar, useValue: snackMock }] },
+      })
+      .compileComponents();
 
     taskService = TestBed.inject(TaskService) as jest.Mocked<TaskService>;
     snackBar    = TestBed.inject(MatSnackBar) as jest.Mocked<MatSnackBar>;
