@@ -13,7 +13,7 @@ Monorepo with a Node/Express API, Angular 20 web app, PostgreSQL 16 (via Docker)
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          GitHub Actions                             │
-│  ci.yml (lint+test+build) ──► deploy-dev/qa/prod.yml               │
+│  ci.yml (lint+test+build) ──► deploy-dev/qa/prod.yml                │
 │                                    │ build+push to GHCR             │
 │                                    ▼ SSH deploy                     │
 │                            Docker host (dev/qa/prod)                │
@@ -27,7 +27,7 @@ Monorepo with a Node/Express API, Angular 20 web app, PostgreSQL 16 (via Docker)
               └───────────────────────┬───────────────────────┘
                          ┌────────────┴──────────┐
                          │                       │
-              ┌──────────▼──────────┐  ┌─────────▼──────────┐
+              ┌──────────▼──────────┐  ┌─────────▼──────────-┐
               │   Angular 20 SPA    │  │  Express API (3333) │
               │  Standalone comps   │  │  TypeScript, Prisma │
               │  Signals, RxJS      │  │  JWT + Helmet       │
@@ -35,11 +35,11 @@ Monorepo with a Node/Express API, Angular 20 web app, PostgreSQL 16 (via Docker)
               └─────────────────────┘  └──────┬──────┬───────┘
                                               │      │
                           ┌───────────────────┘      └──────────┐
-                          │                                      │
+                          │                                     │
                ┌──────────▼──────────┐              ┌───────────▼──────────┐
-               │   PostgreSQL 16     │              │   MinIO (S3-compat.)  │
-               │   Prisma 5 ORM      │              │   Document storage    │
-               │   26-model schema   │              │   Presigned URLs      │
+               │   PostgreSQL 16     │              │   MinIO (S3-compat.) │
+               │   Prisma 5 ORM      │              │   Document storage   │
+               │   26-model schema   │              │   Presigned URLs     │
                └─────────────────────┘              └──────────────────────┘
                                                               │
                                                    ┌──────────▼──────────┐

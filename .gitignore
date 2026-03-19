@@ -3,6 +3,8 @@ api/node_modules
 web/node_modules
 dist/
 .angular/
+.DS_Store
+apps/api/coverage/
 
 # Generated env files
 ./api
