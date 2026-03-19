@@ -6,7 +6,6 @@ WORKDIR /app
 # Copy workspace manifests first for layer caching
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
-COPY packages/ ./packages/
 
 RUN npm ci --workspace=apps/api --ignore-scripts
 
@@ -16,7 +15,7 @@ COPY scripts/ ./scripts/
 WORKDIR /app/apps/api
 
 RUN npx prisma generate --schema prisma/schema.prisma
-RUN npm run build
+RUN npm run build:ci
 
 # ---- Stage 2: Production ----
 FROM node:20-alpine AS runner
