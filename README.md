@@ -299,6 +299,12 @@ npm run down       # remove volumes & orphans (data loss)
 npm run down:keep  # keep volumes
 
 # Dev
+cd apps/api
+npm install
+cd ../web
+npm install
+cd ../../
+npm install -D concurrently
 npm run dev        # api + web
 npm run dev:api
 npm run dev:web
