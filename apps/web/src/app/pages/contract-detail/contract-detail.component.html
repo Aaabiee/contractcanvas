@@ -20,9 +20,9 @@
         <p *ngIf="data.versions.length === 0" class="empty-list">No versions yet.</p>
         <ul class="version-list" *ngIf="data.versions.length > 0">
           <li *ngFor="let v of data.versions" class="version-item">
-            <span class="version-number">v{{ v.versionNumber }}</span>
+            <span class="version-number">v{{ v.number }}</span>
             <span class="version-title">{{ v.title ?? 'Untitled' }}</span>
-            <span class="version-size">{{ formatBytes(v.sizeBytes) }}</span>
+            <span class="version-size">{{ formatBytes(v.sizeBytes ?? 0) }}</span>
             <span class="version-mime">{{ v.mimeType }}</span>
           </li>
         </ul>

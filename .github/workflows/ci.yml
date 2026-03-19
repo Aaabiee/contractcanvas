@@ -66,7 +66,7 @@ jobs:
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test
-      - run: npm run build
+      - run: npm run build:ci
         working-directory: apps/api
 
   # ───────────────────────────── Web ─────────────────────────────
@@ -106,7 +106,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
       - run: npm ci
-      - run: npm run -w apps/web build -- --configuration=production
+      - run: npm run -w web build -- --configuration=production
 
       - name: Upload web dist
         uses: actions/upload-artifact@v4

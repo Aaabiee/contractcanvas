@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "dotenv -e ../../infra/.env -- tsx watch src/server.ts",
     "build": "tsc",
+    "build:ci": "tsc",
     "start": "node dist/server.js",
     "config:env": "node ../../scripts/config-to-env.mjs",
     "predev": "npm run config:env && npm run prisma:generate",

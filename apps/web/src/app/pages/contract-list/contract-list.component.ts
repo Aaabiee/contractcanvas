@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ContractService, Contract } from '../../services/contract.service';
 import { Observable, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { catchError, map } from 'rxjs/operators';
 
 @Component({
   selector: 'app-contract-list',
@@ -20,6 +20,7 @@ export class ContractListComponent implements OnInit {
 
   ngOnInit(): void {
     this.contracts$ = this.contractService.getContracts().pipe(
+      map(page => page.data),
       catchError(err => {
         console.error('Error fetching contracts:', err);
         this.error = 'Could not load contracts. Please try again later.';
