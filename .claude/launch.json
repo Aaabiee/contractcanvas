@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "-w", "apps/api", "dev"],
+      "port": 3333
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "--prefix", "/Users/saito/projects/contractcanvas/apps/web", "start"],
+      "port": 4200
+    }
+  ]
+}
