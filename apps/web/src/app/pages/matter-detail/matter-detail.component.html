@@ -3,23 +3,37 @@
 
   <div *ngIf="error" class="error-message">{{ error }}</div>
 
-  <!-- Use async pipe to subscribe to the matter$ observable -->
-  <ng-container *ngIf="matter$ | async as matter; else loading">
-    <div *ngIf="matter; else notFound">
-      <h2>{{ matter.title }}</h2>
-      <span class="status-badge">{{ matter.status }}</span>
-      <p class="description">{{ matter.description || 'No description provided.' }}</p>
+  <ng-container *ngIf="data$ | async as data; else loading">
+    <div *ngIf="data; else notFound">
+      <h2>{{ data.matter.title }}</h2>
+      <span class="status-badge">{{ data.matter.status }}</span>
+      <p class="description">{{ data.matter.description || 'No description provided.' }}</p>
 
-      <!-- Placeholder for where contracts/documents would go -->
       <section class="related-items">
-        <h3>Related Contracts</h3>
-        <p>(List of contracts for this matter)</p>
-        <h3>Related Documents</h3>
-        <p>(List of documents for this matter)</p>
+        <h3>Contracts</h3>
+        <p *ngIf="data.contracts.length === 0" class="empty-list">No contracts for this matter.</p>
+        <ul class="contract-list" *ngIf="data.contracts.length > 0">
+          <li *ngFor="let contract of data.contracts" class="contract-item">
+            <a [routerLink]="['/contracts', contract.id]">
+              <span class="contract-title">{{ contract.title }}</span>
+              <span class="contract-status">{{ contract.status }}</span>
+            </a>
+          </li>
+        </ul>
+
+        <h3>Documents</h3>
+        <p *ngIf="data.documents.length === 0" class="empty-list">No documents for this matter.</p>
+        <ul class="document-list" *ngIf="data.documents.length > 0">
+          <li *ngFor="let doc of data.documents" class="document-item">
+            <span class="document-name">{{ doc.filename }}</span>
+            <span class="document-size">{{ formatBytes(doc.sizeBytes) }}</span>
+            <span class="document-kind">{{ doc.kind }}</span>
+          </li>
+        </ul>
       </section>
     </div>
   </ng-container>
-  
+
   <ng-template #notFound>
     <p *ngIf="!error">Matter not found.</p>
   </ng-template>

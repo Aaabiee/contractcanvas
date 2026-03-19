@@ -1,47 +1,46 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { provideRouter, Router } from '@angular/router';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 import { RegisterComponent } from './register.component';
 import { AuthService } from '../../services/auth.service';
-import { Router } from '@angular/router';
 
-// Create a mock AuthService
 class MockAuthService {
-  register(credentials: any) {
-    if (credentials.email === 'new@example.com') {
-      return of({ success: true });
-    } else if (credentials.email === 'exists@example.com') {
-      return throwError(() => ({ status: 409, error: 'User exists' }));
-    } else {
-      return throwError(() => ({ status: 500, error: 'Server error' }));
-    }
-  }
+  register = jest.fn(() => of({ redirectTo: '/login' }));
+}
+
+function setValidForm(component: RegisterComponent) {
+  component.acceptTerms = true;
+  component.email = 'new@example.com';
+  component.password = 'password123';
+  component.confirmPassword = 'password123';
+  component.firstName = 'Alice';
+  component.lastName = 'Smith';
+  component.orgMode = 'create';
+  component.organizationName = 'Acme';
+  component.organizationSlug = 'acme';
 }
 
 describe('RegisterComponent', () => {
   let component: RegisterComponent;
   let fixture: ComponentFixture<RegisterComponent>;
-  let authService: AuthService;
+  let authService: MockAuthService;
   let router: Router;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      // Import the standalone component directly.
-      imports: [RegisterComponent], 
+      imports: [RegisterComponent, NoopAnimationsModule],
       providers: [
-        // --- ADD THE NEW PROVIDERS ---
-        provideHttpClientTesting(), // Replaces HttpClientTestingModule
-        provideRouter([]),          // Replaces RouterTestingModule
-        // -----------------------------
-        { provide: AuthService, useClass: MockAuthService }
-      ]
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: AuthService, useClass: MockAuthService },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(RegisterComponent);
     component = fixture.componentInstance;
-    authService = TestBed.inject(AuthService);
+    authService = TestBed.inject(AuthService) as unknown as MockAuthService;
     router = TestBed.inject(Router);
     fixture.detectChanges();
   });
@@ -50,39 +49,91 @@ describe('RegisterComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should navigate to login on successful registration', () => {
-    const navigateSpy = jest.spyOn(router, 'navigate');
-    
-    component.email = 'new@example.com';
-    component.password = 'newpassword';
-    
+  it('shows error when acceptTerms is false', () => {
+    component.acceptTerms = false;
     component.onRegister();
+    expect(component.errorMessage).toBe('You must accept the Terms of Service to continue.');
+    expect(authService.register).not.toHaveBeenCalled();
+  });
 
-    expect(navigateSpy).toHaveBeenCalledWith(['/login']);
+  it('shows error when passwords do not match', () => {
+    component.acceptTerms = true;
+    component.password = 'abc123';
+    component.confirmPassword = 'different';
+    component.onRegister();
+    expect(component.errorMessage).toBe('Passwords do not match.');
+    expect(authService.register).not.toHaveBeenCalled();
+  });
+
+  it('shows error when first or last name is missing', () => {
+    component.acceptTerms = true;
+    component.password = 'abc123';
+    component.confirmPassword = 'abc123';
+    component.firstName = '';
+    component.lastName = '';
+    component.onRegister();
+    expect(component.errorMessage).toBe('First and Last name are required.');
+    expect(authService.register).not.toHaveBeenCalled();
+  });
+
+  it('navigates to / on successful registration (create mode)', () => {
+    const spy = jest.spyOn(router, 'navigateByUrl');
+    setValidForm(component);
+    component.onRegister();
+    expect(spy).toHaveBeenCalledWith('/');
     expect(component.errorMessage).toBe('');
   });
 
-  it('should set 409 error message if email is already in use', () => {
-    const navigateSpy = jest.spyOn(router, 'navigate');
-
-    component.email = 'exists@example.com';
-    component.password = 'password';
-
+  it('navigates to / on successful registration (join mode)', () => {
+    const spy = jest.spyOn(router, 'navigateByUrl');
+    setValidForm(component);
+    component.orgMode = 'join';
+    component.inviteToken = 'invite-abc';
     component.onRegister();
+    expect(spy).toHaveBeenCalledWith('/');
+  });
 
-    expect(navigateSpy).not.toHaveBeenCalled();
+  it('shows 409 error when email is already in use', () => {
+    (authService.register as jest.Mock).mockReturnValue(throwError(() => ({ status: 409 })));
+    setValidForm(component);
+    component.onRegister();
     expect(component.errorMessage).toBe('This email is already in use.');
   });
 
-  it('should set a generic error message on other failures', () => {
-    const navigateSpy = jest.spyOn(router, 'navigate');
-
-    component.email = 'error@example.com';
-    component.password = 'password';
-
+  it('shows err.message as error on non-409 failure', () => {
+    (authService.register as jest.Mock).mockReturnValue(
+      throwError(() => ({ status: 500, message: 'Server error' }))
+    );
+    setValidForm(component);
     component.onRegister();
+    expect(component.errorMessage).toBe('Server error');
+  });
 
-    expect(navigateSpy).not.toHaveBeenCalled();
+  it('shows err.error.message when present', () => {
+    (authService.register as jest.Mock).mockReturnValue(
+      throwError(() => ({ status: 422, error: { message: 'Validation failed' } }))
+    );
+    setValidForm(component);
+    component.onRegister();
+    expect(component.errorMessage).toBe('Validation failed');
+  });
+
+  it('shows first field error from details.fieldErrors', () => {
+    (authService.register as jest.Mock).mockReturnValue(
+      throwError(() => ({
+        status: 400,
+        error: { details: { fieldErrors: { email: ['Email is invalid'] } } },
+      }))
+    );
+    setValidForm(component);
+    component.onRegister();
+    expect(component.errorMessage).toBe('Email is invalid');
+  });
+
+  it('shows fallback message when no specific error info', () => {
+    (authService.register as jest.Mock).mockReturnValue(throwError(() => ({})));
+    setValidForm(component);
+    component.onRegister();
     expect(component.errorMessage).toBe('Registration failed. Please try again.');
   });
 });

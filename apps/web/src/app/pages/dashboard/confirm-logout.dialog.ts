@@ -19,7 +19,6 @@ export interface ConfirmLogoutData {
 })
 export class ConfirmLogoutDialogComponent {
   private dialogRef = inject(MatDialogRef<ConfirmLogoutDialogComponent, boolean>);
-  // optional data; dialog works without it
   data = inject<ConfirmLogoutData | null>(MAT_DIALOG_DATA, { optional: true }) ?? null;
 
   get title() {

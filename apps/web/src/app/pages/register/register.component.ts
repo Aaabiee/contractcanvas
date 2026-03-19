@@ -1,4 +1,3 @@
-// apps/web/src/app/pages/register/register.component.ts
 import { Component, inject } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -6,7 +5,6 @@ import { FormsModule } from '@angular/forms';
 
 import { AuthService, AppRole, RegisterPayloadCreate, RegisterPayloadJoin } from '../../services/auth.service';
 
-// Angular Material
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -37,35 +35,27 @@ export class RegisterComponent {
   private authService = inject(AuthService);
   private router = inject(Router);
 
-  /* -------- Form model (matches API schema) -------- */
-  // account info
   email = '';
   password = '';
   confirmPassword = '';
   role: AppRole = 'CLIENT';
   acceptTerms = false;
 
-  // name
   firstName = '';
   lastName = '';
   displayName = '';
 
-  // org flow toggle
   orgMode: 'create' | 'join' = 'create';
 
-  // create mode fields
   organizationName = '';
   organizationSlug = '';
 
-  // join mode field
   inviteToken = '';
 
-  // UI helpers
   hidePassword = true;
   hideConfirm = true;
   errorMessage = '';
 
-  // convenient list for select
   readonly roles: AppRole[] = ['CLIENT', 'LAWYER', 'PARALEGAL', 'ADMIN'];
 
   onRegister(): void {
@@ -107,7 +97,6 @@ export class RegisterComponent {
 
       this.authService.register(payload).subscribe({
         next: () => {
-          // Registered & auto-logged-in; go to app home/dashboard
           this.router.navigateByUrl('/');
         },
         error: (err) => this.handleError(err),
@@ -129,7 +118,6 @@ export class RegisterComponent {
   }
 
   private handleError(err: any) {
-    // backend returns { error, details } for zod; handle common cases
     if (err?.status === 409) {
       this.errorMessage = 'This email is already in use.';
       return;
@@ -141,7 +129,6 @@ export class RegisterComponent {
       'Registration failed. Please try again.';
     this.errorMessage = msg;
 
-    // Highlight schema errors (optional)
     const fieldErrors = err?.error?.details?.fieldErrors;
     if (fieldErrors) {
       const firstKey = Object.keys(fieldErrors)[0];

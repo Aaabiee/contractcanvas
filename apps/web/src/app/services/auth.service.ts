@@ -4,8 +4,6 @@ import { Observable, of, tap } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { Router } from '@angular/router';
 
-/* ================== Types ================== */
-
 export type AppRole = 'ADMIN' | 'LAWYER' | 'PARALEGAL' | 'CLIENT';
 
 export interface PublicName {
@@ -30,21 +28,19 @@ export interface RegisterResponse {
 
 export interface AuthResponse {
   token: string;
-  user?: User; // some APIs also return user on login
+  user?: User;
 }
 
-/** Registration payloads (must match API) */
 export interface RegisterPayloadCreate {
   email: string;
   password: string;
   confirmPassword: string;
   name: PublicName;
-  role: AppRole;                 // default CLIENT is fine
-  acceptTerms: true;             // must be true per schema
+  role: AppRole;
+  acceptTerms: true;
   orgMode: 'create';
   organizationName: string;
-  organizationSlug: string;      // lowercase/slug
-  // optional fields
+  organizationSlug: string;
   phone?: string;
   picture?: string;
   timezone?: string;
@@ -63,7 +59,6 @@ export interface RegisterPayloadJoin {
   acceptTerms: true;
   orgMode: 'join';
   inviteToken: string;
-  // optional
   phone?: string;
   picture?: string;
   timezone?: string;
@@ -75,14 +70,11 @@ export interface RegisterPayloadJoin {
 
 export type RegisterPayload = RegisterPayloadCreate | RegisterPayloadJoin;
 
-/* ================== Service ================== */
-
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private http = inject(HttpClient);
   private router = inject(Router);
 
-  /** With Angular dev proxy, this routes to API (:3333) */
   private apiUrl = '/api/auth';
   private tokenKey = 'contractcanvas_auth_token';
 
@@ -94,12 +86,9 @@ export class AuthService {
     }
   }
 
-  /* ---------- Auth calls ---------- */
-
   register(payload: RegisterPayload): Observable<RegisterResponse> {
     return this.http.post<RegisterResponse>(`${this.apiUrl}/register`, payload).pipe(
       tap((res) => {
-        // API returns a token on successful registration; auto-login
         this.storeToken(res.token);
         this.currentUser.set(res.user);
       })
@@ -110,7 +99,6 @@ export class AuthService {
     return this.http.post<AuthResponse>(`${this.apiUrl}/login`, credentials).pipe(
       tap((response) => {
         this.storeToken(response.token);
-        // If user is included, set it; otherwise fetch /me
         if (response.user) {
           this.currentUser.set(response.user);
         } else {
@@ -134,8 +122,6 @@ export class AuthService {
       })
     );
   }
-
-  /* ---------- Helpers ---------- */
 
   logout(): void {
     localStorage.removeItem(this.tokenKey);

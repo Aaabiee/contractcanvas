@@ -2,14 +2,10 @@
   <h2>Matters</h2>
   <div *ngIf="error" class="error-message">{{ error }}</div>
 
-  <!-- Use async pipe to subscribe to the matters$ observable -->
   <ul class="matter-list" *ngIf="matters$ | async as matters; else loading">
-    <!-- Show message if list is empty and no error occurred -->
     <li *ngIf="matters.length === 0 && !error" class="empty-list">
       No matters found.
     </li>
-    
-    <!-- Loop over matters and create a link for each -->
     <li *ngFor="let matter of matters" class="matter-item">
       <a [routerLink]="['/matters', matter.id]">
         <span class="matter-title">{{ matter.title }}</span>
@@ -18,7 +14,6 @@
     </li>
   </ul>
 
-  <!-- Loading template -->
   <ng-template #loading>
     <p *ngIf="!error">Loading matters...</p>
   </ng-template>

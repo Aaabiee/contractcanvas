@@ -1,4 +1,7 @@
 {
+  "jest.rootPath": "apps/web",
+  "jest.testPathPattern": ".*\\.spec\\.ts$",
+  "jest.jestCommandLine": "npx jest --config=apps/web/jest.config.js",
   "cSpell.words": [
     "bowser",
     "briebug",

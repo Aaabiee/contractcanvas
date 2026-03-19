@@ -1,49 +1,58 @@
-// apps/api/src/routes/contracts.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '../prisma.js';
-import { PrismaClient, Prisma } from '@prisma/client';
 
 export const router = Router();
 
-// --- Zod Schemas ---
 const CreateContractSchema = z.object({
-  title: z.string().min(1),
-  matterId: z.string().cuid(),
-  // TODO: Get organizationId from authenticated user context
-  organizationId: z.string().cuid(),
+  title:      z.string().min(1),
+  matterId:   z.string().cuid(),
   valueCents: z.number().int().optional(),
-  currency: z.string().optional(),
+  currency:   z.string().optional(),
 });
 
 const UpdateContractSchema = z.object({
-  title: z.string().min(1).optional(),
-  status: z.enum(['DRAFT', 'NEGOTIATION', 'PENDING_SIGNATURE', 'EXECUTED', 'ARCHIVED']).optional(),
+  title:      z.string().min(1).optional(),
+  status:     z.enum(['DRAFT', 'NEGOTIATION', 'PENDING_SIGNATURE', 'EXECUTED', 'ARCHIVED']).optional(),
   valueCents: z.number().int().optional().nullable(),
-  currency: z.string().optional(),
+  currency:   z.string().optional(),
 });
 
 const CreateVersionSchema = z.object({
-    // TODO: Get authorId from authenticated user context
-    authorId: z.string().cuid(),
-    storageKey: z.string().min(1), // Key from S3/MinIO upload
-    mimeType: z.string().optional(),
-    sizeBytes: z.number().int().optional(),
-    title: z.string().optional(),
-    // diffJson, aiContext can be added later or via separate endpoints
+  storageKey: z.string().min(1),
+  mimeType:   z.string().optional(),
+  sizeBytes:  z.number().int().optional(),
+  title:      z.string().optional(),
+  diffJson:   z.record(z.unknown()).optional(),
+  aiContext:  z.record(z.unknown()).optional(),
 });
 
-// --- Contract Routes ---
+const orgGuard = (req: Request, res: Response): string | null => {
+  const id = req.user?.organizationId;
+  if (!id) res.status(403).json({ error: 'No active organization. Include X-Organization-Id header.' });
+  return id ?? null;
+};
 
-// GET /api/contracts (List contracts for the org)
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Add auth/org checks + Filtering (e.g., by matterId from query params)
-    // const organizationId = req.user.organizationId; // Example
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
+    const { matterId, status } = req.query;
     const contracts = await prisma.contract.findMany({
-      // where: { organizationId }, // Filter by org
+      where: {
+        organizationId,
+        deletedAt: null,
+        ...(matterId && typeof matterId === 'string' ? { matterId } : {}),
+        ...(status   && typeof status   === 'string' ? { status: status as any } : {}),
+      },
       orderBy: { createdAt: 'desc' },
-      include: { matter: { select: { id: true, title: true } } } // Include basic matter info
+      include: {
+        matter:         { select: { id: true, title: true } },
+        currentVersion: { select: { id: true, number: true, title: true, createdAt: true } },
+        _count:         { select: { versions: true } },
+      },
     });
     res.json(contracts);
   } catch (error) {
@@ -51,26 +60,24 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// POST /api/contracts (Create a new contract)
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Add auth/org checks
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
     const validation = CreateContractSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
     }
-    const data = validation.data;
-    // TODO: Verify matterId belongs to the user's organization
+    const { title, matterId, valueCents, currency } = validation.data;
+
+    const matter = await prisma.matter.findFirst({ where: { id: matterId, organizationId, deletedAt: null } });
+    if (!matter) {
+      return res.status(404).json({ error: 'Matter not found' });
+    }
 
     const newContract = await prisma.contract.create({
-      data: {
-        title: data.title,
-        matterId: data.matterId,
-        organizationId: data.organizationId, // Replace with req.user.organizationId
-        valueCents: data.valueCents,
-        currency: data.currency,
-        // Status defaults to DRAFT
-      },
+      data: { title, matterId, organizationId, valueCents, currency },
     });
     res.status(201).json(newContract);
   } catch (error) {
@@ -78,18 +85,20 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// GET /api/contracts/:id (Get specific contract)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Add auth/org checks
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
     const { id } = req.params;
-    const contract = await prisma.contract.findUnique({
-      where: { id /*, organizationId: req.user.organizationId */ },
+    const contract = await prisma.contract.findFirst({
+      where: { id, organizationId, deletedAt: null },
       include: {
-        matter: true,
-        versions: { orderBy: { number: 'desc' } }, // Include versions, newest first
+        matter:         { select: { id: true, title: true, status: true } },
+        versions:       { orderBy: { number: 'desc' }, include: { author: { select: { id: true, firstName: true, lastName: true } } } },
         currentVersion: true,
-      }
+        _count:         { select: { signatureEnvelopes: true } },
+      },
     });
     if (!contract) {
       return res.status(404).json({ error: 'Contract not found' });
@@ -100,115 +109,123 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// PATCH /api/contracts/:id (Update contract metadata/status)
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Add auth/org checks
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
     const { id } = req.params;
     const validation = UpdateContractSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
     }
 
-    const updatedContract = await prisma.contract.update({
-      where: { id /*, organizationId: req.user.organizationId */ },
-      data: validation.data,
-    });
+    const existing = await prisma.contract.findFirst({ where: { id, organizationId, deletedAt: null } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const updatedContract = await prisma.contract.update({ where: { id }, data: validation.data });
     res.json(updatedContract);
   } catch (error) {
-     if ((error as any).code === 'P2025') { // Record not found
-        return res.status(404).json({ error: 'Contract not found' });
-    }
     next(error);
   }
 });
 
-// DELETE /api/contracts/:id (Soft delete)
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Add auth/org checks
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
     const { id } = req.params;
-    await prisma.contract.update({
-      where: { id /*, organizationId: req.user.organizationId */ },
-      data: { deletedAt: new Date() },
-    });
+    const existing = await prisma.contract.findFirst({ where: { id, organizationId, deletedAt: null } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    await prisma.contract.update({ where: { id }, data: { deletedAt: new Date() } });
     res.status(204).send();
   } catch (error) {
-     if ((error as any).code === 'P2025') {
-        return res.status(404).json({ error: 'Contract not found' });
-    }
     next(error);
   }
 });
 
-// --- Contract Version Routes ---
-
-// POST /api/contracts/:contractId/versions (Add a new version)
 router.post('/:contractId/versions', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        // TODO: Add auth/org checks - verify contract belongs to org
-        const { contractId } = req.params;
-        const validation = CreateVersionSchema.safeParse(req.body);
-        if (!validation.success) {
-            return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
-        }
-        const data = validation.data;
+  try {
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
 
-        // Transaction to get the next version number and create the version
-        const newVersion = await prisma.$transaction(async (tx: PrismaClient | Prisma.TransactionClient) => {
-            const contract = await tx.contract.findUnique({
-                where: { id: contractId },
-                select: { versions: { orderBy: { number: 'desc' }, take: 1 } }
-            });
+    const authorId = req.user?.id;
+    const { contractId } = req.params;
 
-            if (!contract) {
-                throw new Error('Contract not found'); // Will be caught and sent as 404
-            }
-
-            const nextVersionNumber = (contract.versions[0]?.number ?? 0) + 1;
-
-            return tx.contractVersion.create({
-                data: {
-                    contractId: contractId,
-                    number: nextVersionNumber,
-                    authorId: data.authorId, // Replace with req.user.id
-                    storageKey: data.storageKey,
-                    mimeType: data.mimeType,
-                    sizeBytes: data.sizeBytes,
-                    title: data.title ?? `Version ${nextVersionNumber}`,
-                },
-            });
-        });
-
-        // Optionally update the contract's currentVersionId
-        // await prisma.contract.update({
-        //     where: { id: contractId },
-        //     data: { currentVersionId: newVersion.id }
-        // });
-
-        res.status(201).json(newVersion);
-    } catch (error: any) {
-         if (error.message === 'Contract not found') {
-            return res.status(404).json({ error: 'Contract not found' });
-        }
-        next(error);
+    const validation = CreateVersionSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
     }
+    const data = validation.data;
+
+    const contract = await prisma.contract.findFirst({ where: { id: contractId, organizationId, deletedAt: null } });
+    if (!contract) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    const newVersion = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const latest = await tx.contractVersion.findFirst({
+        where:   { contractId },
+        orderBy: { number: 'desc' },
+        select:  { number: true },
+      });
+      const nextNumber = (latest?.number ?? 0) + 1;
+
+      const version = await tx.contractVersion.create({
+        data: {
+          contractId,
+          number:     nextNumber,
+          authorId,
+          storageKey: data.storageKey,
+          mimeType:   data.mimeType,
+          sizeBytes:  data.sizeBytes,
+          title:      data.title ?? `Version ${nextNumber}`,
+          diffJson:   data.diffJson as Prisma.InputJsonValue ?? Prisma.JsonNull,
+          aiContext:  data.aiContext as Prisma.InputJsonValue ?? Prisma.JsonNull,
+        },
+      });
+
+      await tx.contract.update({
+        where: { id: contractId },
+        data:  { currentVersionId: version.id },
+      });
+
+      return version;
+    });
+
+    res.status(201).json(newVersion);
+  } catch (error) {
+    next(error);
+  }
 });
 
-// GET /api/contracts/:contractId/versions (List versions for a contract)
 router.get('/:contractId/versions', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        // TODO: Add auth/org checks
-        const { contractId } = req.params;
-        const versions = await prisma.contractVersion.findMany({
-            where: { contractId },
-            orderBy: { number: 'desc' }, // Newest first
-            include: { author: { select: { id: true, name: true } } }
-        });
-        res.json(versions);
-    } catch (error) {
-        next(error);
+  try {
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
+    const { contractId } = req.params;
+
+    const contract = await prisma.contract.findFirst({ where: { id: contractId, organizationId } });
+    if (!contract) {
+      return res.status(404).json({ error: 'Contract not found' });
     }
+
+    const versions = await prisma.contractVersion.findMany({
+      where:   { contractId },
+      orderBy: { number: 'desc' },
+      include: { author: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    res.json(versions);
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

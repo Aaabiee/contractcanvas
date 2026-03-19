@@ -1,35 +1,41 @@
-// apps/api/src/routes/matters.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
 
 export const router = Router();
 
-// --- Zod Schemas ---
 const CreateMatterSchema = z.object({
-  title: z.string().min(1, { message: 'Title is required' }),
+  title:       z.string().min(1, { message: 'Title is required' }),
   description: z.string().optional(),
-  // IMPORTANT: Remove these once auth middleware provides context
-  ownerId: z.string().cuid({ message: 'Valid owner ID required' }),
-  organizationId: z.string().cuid({ message: 'Valid organization ID required' }),
+  status:      z.enum(['OPEN', 'ON_HOLD', 'CLOSED']).optional(),
 });
 
 const UpdateMatterSchema = z.object({
-  title: z.string().min(1).optional(),
+  title:       z.string().min(1).optional(),
   description: z.string().optional().nullable(),
-  status: z.enum(['OPEN', 'ON_HOLD', 'CLOSED']).optional(), // Use enum values from Prisma schema
+  status:      z.enum(['OPEN', 'ON_HOLD', 'CLOSED']).optional(),
 });
 
-// --- Routes ---
-
-// GET /api/matters - List all matters (needs org scoping later)
-router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
+router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // !! IMPORTANT: Add filtering by req.user.organizationId once auth is integrated !!
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      return res.status(403).json({ error: 'No active organization. Include X-Organization-Id header.' });
+    }
+
+    const { status } = req.query;
     const matters = await prisma.matter.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        ...(status && typeof status === 'string' ? { status: status as any } : {}),
+      },
       orderBy: { createdAt: 'desc' },
-      // Example: include owner info
-      // include: { owner: { select: { id: true, name: true, email: true } } }
+      include: {
+        owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
+        participants: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+        _count:       { select: { contracts: true, documents: true, tasks: true } },
+      },
     });
     res.json(matters);
   } catch (error) {
@@ -37,15 +43,23 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// GET /api/matters/:id - Get a single matter by ID
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      return res.status(403).json({ error: 'No active organization.' });
+    }
+
     const { id } = req.params;
-    // !! IMPORTANT: Add filtering by req.user.organizationId !!
-    const matter = await prisma.matter.findUnique({
-      where: { id },
-      // Example: include related data
-      // include: { owner: true, participants: true, documents: true, contracts: true }
+    const matter = await prisma.matter.findFirst({
+      where: { id, organizationId, deletedAt: null },
+      include: {
+        owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
+        participants: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
+        contracts:    { where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true, title: true, status: true, valueCents: true, currency: true, createdAt: true } },
+        documents:    { where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true, filename: true, mimeType: true, sizeBytes: true, kind: true, createdAt: true } },
+        tasks:        { orderBy: { dueAt: 'asc' },  select: { id: true, title: true, dueAt: true, completedAt: true, assigneeId: true } },
+      },
     });
 
     if (!matter) {
@@ -57,26 +71,24 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// POST /api/matters - Create a new matter
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const organizationId = req.user?.organizationId;
+    const ownerId        = req.user?.id;
+    if (!organizationId || !ownerId) {
+      return res.status(403).json({ error: 'No active organization.' });
+    }
+
     const validation = CreateMatterSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
     }
 
-    // !! IMPORTANT: Replace ownerId and organizationId with values from req.user (auth context) !!
-    const { title, description, ownerId, organizationId } = validation.data;
-    // const ownerId = req.user.id;
-    // const organizationId = req.user.organizationId;
-
+    const { title, description, status } = validation.data;
     const newMatter = await prisma.matter.create({
-      data: {
-        title,
-        description,
-        ownerId,
-        organizationId,
-        // Status defaults to OPEN per schema
+      data: { title, description, status, ownerId, organizationId },
+      include: {
+        owner: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
     res.status(201).json(newMatter);
@@ -85,57 +97,52 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// PATCH /api/matters/:id - Update an existing matter
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      return res.status(403).json({ error: 'No active organization.' });
+    }
+
     const { id } = req.params;
     const validation = UpdateMatterSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
     }
 
-    // !! IMPORTANT: Add check to ensure user has permission to update this matter !!
-    // e.g., fetch matter and check if req.user.organizationId matches matter.organizationId
+    const existing = await prisma.matter.findFirst({ where: { id, organizationId, deletedAt: null } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Matter not found' });
+    }
 
     const updatedMatter = await prisma.matter.update({
       where: { id },
-      data: validation.data, // Only includes fields present in the request body
+      data:  validation.data,
     });
     res.json(updatedMatter);
   } catch (error) {
-    // Handle potential errors like record not found (P2025)
-    if ((error as any).code === 'P2025') {
-        return res.status(404).json({ error: 'Matter not found' });
-    }
     next(error);
   }
 });
 
-// DELETE /api/matters/:id - Delete a matter (consider soft delete)
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-
-    // !! IMPORTANT: Add permission check !!
-
-    // Option 1: Hard delete
-    // await prisma.matter.delete({ where: { id } });
-
-    // Option 2: Soft delete (if schema has `deletedAt DateTime?`)
-     await prisma.matter.update({
-       where: { id },
-       data: { deletedAt: new Date() },
-     });
-
-    res.status(204).send(); // No content response
-  } catch (error) {
-     if ((error as any).code === 'P2025') {
-        // If soft deleting, might want to return 204 even if already soft-deleted
-        return res.status(404).json({ error: 'Matter not found' });
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      return res.status(403).json({ error: 'No active organization.' });
     }
+
+    const { id } = req.params;
+    const existing = await prisma.matter.findFirst({ where: { id, organizationId, deletedAt: null } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Matter not found' });
+    }
+
+    await prisma.matter.update({ where: { id }, data: { deletedAt: new Date() } });
+    res.status(204).send();
+  } catch (error) {
     next(error);
   }
 });
-
 
 export default router;

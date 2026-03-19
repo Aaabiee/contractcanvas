@@ -1,0 +1,37 @@
+.contract-list-container {
+  padding: 20px;
+}
+.contract-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.contract-item a {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 8px;
+  border-bottom: 1px solid #eee;
+  text-decoration: none;
+  color: #333;
+}
+.contract-item a:hover {
+  background-color: #f9f9f9;
+}
+.contract-title {
+  font-weight: 600;
+}
+.contract-status {
+  font-size: 0.85em;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: lowercase;
+  background-color: #eee;
+  color: #555;
+}
+.contract-status.status-draft { background-color: #e3f2fd; color: #1565c0; }
+.contract-status.status-negotiation { background-color: #fff3e0; color: #e65100; }
+.contract-status.status-pending_signature { background-color: #fce4ec; color: #880e4f; }
+.contract-status.status-executed { background-color: #e8f5e9; color: #2e7d32; }
+.contract-status.status-archived { background-color: #f3e5f5; color: #6a1b9a; }
+.error-message { color: red; }
+.empty-list { padding: 12px 8px; color: #777; }

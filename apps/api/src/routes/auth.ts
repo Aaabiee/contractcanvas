@@ -1,4 +1,3 @@
-// apps/api/src/routes/auth.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -10,11 +9,9 @@ import type { Prisma } from '@prisma/client';
 
 export const router = Router();
 
-// ---------- helpers ----------
 const slugify = (s: string) =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-// ---------- Zod enums mirror your Prisma enums ----------
 const RoleEnum = z.enum(['ADMIN', 'LAWYER', 'PARALEGAL', 'CLIENT']);
 const OrgRoleEnum = z.enum(['OWNER', 'ADMIN', 'MEMBER']);
 type RoleType = z.infer<typeof RoleEnum>;
@@ -22,13 +19,11 @@ type OrgRoleType = z.infer<typeof OrgRoleEnum>;
 
 const OrgModeEnum = z.enum(['create', 'join']);
 
-// Convert user input to a safe Role value
 const toPrismaRole = (r?: string): RoleType => {
   const u = (r ?? 'CLIENT').toUpperCase();
   return RoleEnum.options.includes(u as RoleType) ? (u as RoleType) : 'CLIENT';
 };
 
-// ---------- Schemas ----------
 const RegisterSchema = z
   .object({
     email: z.string().email({ message: 'Invalid email address' }),
@@ -95,12 +90,6 @@ const LoginSchema = z.object({
   password: z.string(),
 });
 
-// ---------- Routes ----------
-
-// POST /api/auth/register
-// SPA/XHR: 201 JSON { user, organization, redirectTo: '/login' }
-// ?redirect=1 or Accept: text/html => 303 See Other + Location: /login (also returns JSON body)
-// ?autoLogin=1 => include JWT token in response JSON
 router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = RegisterSchema.safeParse(req.body);
@@ -122,17 +111,14 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     const fullName = `${firstName} ${lastName}`.trim().replace(/\s+/g, ' ');
     const cleanSlug = organizationSlug ? slugify(organizationSlug) : undefined;
 
-    // Ensure user doesn't already exist
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return res.status(409).json({ error: 'User already exists' });
 
-    // If creating, check slug availability
     if (orgMode === 'create' && cleanSlug) {
       const existingOrg = await prisma.organization.findUnique({ where: { slug: cleanSlug } });
       if (existingOrg) return res.status(409).json({ error: 'Organization slug already taken' });
     }
 
-    // If joining, ensure org exists
     let orgToJoin: { id: string; name: string; slug: string } | null = null;
     if (orgMode === 'join' && cleanSlug) {
       const found = await prisma.organization.findUnique({
@@ -143,10 +129,8 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       orgToJoin = found;
     }
 
-    // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create user & membership in a transaction
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.create({
         data: {
@@ -155,7 +139,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
           firstName,
           lastName,
           name: fullName,
-          role, // RoleType (string union), accepted by Prisma
+          role,
         },
         select: {
           id: true,
@@ -180,7 +164,6 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
           data: { organizationId: organization.id, userId: user.id, role: 'OWNER' as OrgRoleType },
         });
       } else {
-        // orgMode === 'join' — orgToJoin is guaranteed by validation above
         const org = orgToJoin!;
         organization = org;
 
@@ -192,20 +175,20 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       return { user, organization };
     });
 
-    // Response behavior
     const wantsRedirect =
       req.query.redirect === '1' || /text\/html/.test(String(req.headers.accept || ''));
     const wantsAutoLogin = req.query.autoLogin === '1';
 
     let token: string | undefined;
     if (wantsAutoLogin) {
-      const tokenPayload = { sub: result.user.id, email: result.user.email, role: result.user.role };
+      const organizations = [{ id: result.organization.id, name: result.organization.name, slug: result.organization.slug, role: orgMode === 'create' ? 'OWNER' : 'MEMBER' }];
+      const tokenPayload  = { sub: result.user.id, email: result.user.email, role: result.user.role, organizations };
       token = jwt.sign(tokenPayload, jwtConfig.secret, { expiresIn: '1d' });
     }
 
     if (wantsRedirect) {
       return res
-        .status(303) // See Other
+        .status(303)
         .location('/login')
         .json({
           message: 'Registered successfully. Redirecting to login…',
@@ -233,7 +216,6 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-// POST /api/auth/login
 router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = LoginSchema.safeParse(req.body);
@@ -247,16 +229,38 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const tokenPayload = { sub: user.id, email: user.email, role: user.role };
+    const memberships = await prisma.organizationMember.findMany({
+      where: { userId: user.id },
+      include: { organization: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const organizations = memberships.map(m => ({
+      id:   m.organization.id,
+      name: m.organization.name,
+      slug: m.organization.slug,
+      role: m.role,
+    }));
+
+    const tokenPayload = { sub: user.id, email: user.email, role: user.role, organizations };
     const token = jwt.sign(tokenPayload, jwtConfig.secret, { expiresIn: '1d' });
 
-    res.json({ token });
+    res.json({
+      token,
+      user: {
+        id:        user.id,
+        email:     user.email,
+        firstName: user.firstName,
+        lastName:  user.lastName,
+        name:      user.name,
+        role:      user.role,
+      },
+      organizations,
+    });
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/auth/me (protected)
 router.get('/me', protect, (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: 'User not found in request' });
   res.json(req.user);

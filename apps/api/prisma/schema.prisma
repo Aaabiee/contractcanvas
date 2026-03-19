@@ -53,6 +53,13 @@ enum InvoiceStatus {
   VOID
 }
 
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
 enum ReminderType {
   DEADLINE
   RENEWAL
@@ -238,10 +245,10 @@ model Contract {
 
 model ContractVersion {
   id         String   @id @default(cuid())
-  contractId String? // Made optional based on previous schema? Ensure this is intended. Usually required.
+  contractId String
   number     Int
   title      String?
-  authorId   String? // Made optional based on previous schema? Usually required.
+  authorId   String? // Nullable: set to null when the authoring user is deleted (onDelete: SetNull)
   storageKey String
   mimeType   String?
   sizeBytes  Int?
@@ -249,8 +256,8 @@ model ContractVersion {
   aiContext  Json?
   createdAt  DateTime @default(now())
 
-  contract Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull) // SetNull if author deleted
+  contract Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   comments  Comment[]
   tags      ContractVersionTag[]
@@ -477,7 +484,7 @@ model Payment {
   stripePaymentId String?  @unique // Stripe PaymentIntent ID or Charge ID
   amountCents     Int
   currency        String   @default("usd")
-  status          String   @default("succeeded") // Mirror Stripe status ('succeeded', 'pending', 'failed')
+  status          PaymentStatus @default(PENDING)
   createdAt       DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

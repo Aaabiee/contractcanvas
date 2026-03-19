@@ -14,7 +14,6 @@ import { BreakpointObserver, Breakpoints, LayoutModule } from '@angular/cdk/layo
 import { map, shareReplay, debounceTime, distinctUntilChanged } from 'rxjs';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
-// Angular Material
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -61,7 +60,6 @@ export const tooltipOpts: MatTooltipDefaultOptions = {
     RouterModule,
     ReactiveFormsModule,
     LayoutModule,
-    // Material
     MatToolbarModule,
     MatSidenavModule,
     MatListModule,
@@ -90,23 +88,19 @@ export const tooltipOpts: MatTooltipDefaultOptions = {
   styleUrls: ['./dashboard.component.scss'],
 })
 export class DashboardComponent implements AfterViewInit {
-  // Services
   public authService = inject(AuthService);
   private router = inject(Router);
   private snack = inject(MatSnackBar);
   private dialog = inject(MatDialog);
   private bp = inject(BreakpointObserver);
 
-  // Responsive sidenav mode
   isHandset$ = this.bp.observe(Breakpoints.Handset).pipe(
     map(r => r.matches),
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
-  // Loading state (swap to service-driven if available)
   loading = signal(false);
 
-  // Theme toggle (persisted)
   themeDark = signal<boolean>((() => localStorage.getItem('cc.theme') === 'dark')());
   constructor() {
     effect(() => {
@@ -119,7 +113,6 @@ export class DashboardComponent implements AfterViewInit {
     this.themeDark.set(val);
   }
 
-  // Search control (toolbar)
   search = new FormControl<string>('', { nonNullable: true });
   readonly searchValue = signal<string>('');
   ngOnInit() {
@@ -128,7 +121,6 @@ export class DashboardComponent implements AfterViewInit {
       .subscribe(v => this.searchValue.set((v ?? '').trim().toLowerCase()));
   }
 
-  // User display/role
   displayName = computed(() => {
     const u = (this.authService as any).currentUser ?? (this.authService as any).user ?? null;
     if (!u) return '';
@@ -141,12 +133,10 @@ export class DashboardComponent implements AfterViewInit {
   });
   canSeeAdmin = computed(() => this.userRole() === 'ADMIN');
 
-  // Navigation
   goTo(path: string) {
     this.router.navigate([path]);
   }
 
-  // Logout with confirm
   async onLogout() {
     const confirmed = await this.dialog
       .open(ConfirmLogoutDialogComponent, { width: '360px', autoFocus: false })
@@ -164,7 +154,6 @@ export class DashboardComponent implements AfterViewInit {
     }
   }
 
-  // Stats
   stats = signal([
     { label: 'Open Matters', icon: 'work', value: 6, color: 'primary', link: '/matters' },
     { label: 'Active Contracts', icon: 'description', value: 12, color: 'accent', link: '/contracts' },
@@ -173,10 +162,9 @@ export class DashboardComponent implements AfterViewInit {
   ]);
   statTrackBy = (_: number, s: any) => s.label;
 
-  // Recent activity
   recent = signal([
     { icon: 'rate_review', text: 'Comment on NDA v2', when: '2h ago', link: '/contracts/123' },
-    { icon: 'upload', text: 'Uploaded “MSA_v1.pdf”', when: '5h ago', link: '/documents/abc' },
+    { icon: 'upload', text: 'Uploaded "MSA_v1.pdf"', when: '5h ago', link: '/documents/abc' },
     { icon: 'send', text: 'Envelope sent to john@acme.com', when: 'Yesterday', link: '/contracts/777' },
   ]);
   recentFiltered = computed(() => {
@@ -186,7 +174,6 @@ export class DashboardComponent implements AfterViewInit {
   });
   recentTrackBy = (_: number, r: any) => r.text + r.when;
 
-  // Quick actions (convert to a FAB on handset in template)
   quickActions = signal([
     { icon: 'add', label: 'New Matter', tip: 'Create a new matter', to: '/matters/new' },
     { icon: 'note_add', label: 'Upload Doc', tip: 'Upload a document', to: '/documents/upload' },
@@ -195,7 +182,6 @@ export class DashboardComponent implements AfterViewInit {
   ]);
   qaTrackBy = (_: number, a: any) => a.label;
 
-  // My Tasks (demo) — Material Table
   displayedColumns: string[] = ['title', 'due', 'status', 'assignee', 'actions'];
   dataSource = new MatTableDataSource([
     { title: 'Draft MSA for Acme', due: '2025-11-02', status: 'In review', assignee: 'You' },
@@ -208,7 +194,6 @@ export class DashboardComponent implements AfterViewInit {
   ngAfterViewInit(): void {
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
-    // Hook the global search into the table filter too
     this.search.valueChanges
       .pipe(debounceTime(200), distinctUntilChanged())
       .subscribe(v => {
@@ -218,7 +203,6 @@ export class DashboardComponent implements AfterViewInit {
       Object.values(row).some(val => String(val).toLowerCase().includes(filter));
   }
 
-  // Row actions
   openTask(row: any) {
     this.snack.open(`Open task: ${row.title}`, 'OK', { duration: 1500 });
   }

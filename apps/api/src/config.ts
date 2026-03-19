@@ -1,10 +1,8 @@
-// apps/api/src/config.ts
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
-// --- Type Definitions ---
 export interface AppSection {
   env: string;
   port: number;
@@ -41,21 +39,17 @@ export interface RawAppConfig {
   jwt?: Partial<JwtConfig>;
 }
 
-// --- Paths ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// From apps/api/src -> repo root
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const configPath = path.join(repoRoot, 'config.json');
 
-// Load ONLY the API runtime env file to avoid Prisma conflicts
 const apiEnvPath = path.join(repoRoot, 'apps', 'api', '.env');
 if (fs.existsSync(apiEnvPath)) {
   dotenv.config({ path: apiEnvPath });
 }
 
-// --- Load config.json (optional, overrides handled below) ---
 let cfgFromFile: RawAppConfig = {};
 try {
   if (fs.existsSync(configPath)) {
@@ -68,20 +62,17 @@ try {
   console.error(`[Config] Failed to load or parse ${configPath}. Using defaults/env vars. Error: ${errorMessage}`);
 }
 
-// --- Combine config file with environment variables ---
 const appCfgFromFile = cfgFromFile.app || {};
 const dbCfgFromFile = cfgFromFile.db || {};
 const s3CfgFromFile = cfgFromFile.s3 || {};
 const stripeCfgFromFile = cfgFromFile.stripe || {};
 const jwtCfgFromFile = cfgFromFile.jwt || {};
 
-// App Config
 const env = process.env.NODE_ENV || appCfgFromFile.env || 'development';
 const portString = process.env.PORT || (appCfgFromFile.port ? String(appCfgFromFile.port) : undefined) || '3333';
 const port = parseInt(portString, 10);
 export const app: AppSection = { env, port };
 
-// DB Config (runtime gets values from config/env; Prisma CLI uses apps/api/prisma/.env)
 export const db: DBConfig = {
   user: process.env.POSTGRES_USER || dbCfgFromFile.user || 'postgres',
   password: process.env.POSTGRES_PASSWORD || dbCfgFromFile.password || 'postgres',
@@ -97,7 +88,6 @@ export const db: DBConfig = {
   container_name: dbCfgFromFile.container_name || 'contractcanvas-postgres',
 };
 
-// S3 Config
 const forcePathStyleRaw = (process.env.S3_FORCE_PATH_STYLE ??
   (typeof s3CfgFromFile.forcePathStyle === 'boolean' ? String(s3CfgFromFile.forcePathStyle) : 'true')) as
   | 'true'
@@ -112,13 +102,11 @@ export const s3: S3Config = {
   forcePathStyle: forcePathStyleRaw === 'true',
 };
 
-// Stripe Config
 export const stripe: StripeConfig = {
   secretKey: process.env.STRIPE_SECRET_KEY || stripeCfgFromFile.secretKey,
   webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || stripeCfgFromFile.webhookSecret,
 };
 
-// JWT Config
 const defaultJwtSecret = '!!CHANGE_ME_IN_CONFIG_OR_ENV!!';
 const jwtSecretFromEnv = process.env.JWT_SECRET;
 const jwtSecretFromFile = jwtCfgFromFile.secret;
@@ -134,12 +122,10 @@ if (app.env !== 'production' && effectiveJwtSecret === defaultJwtSecret) {
 }
 export const jwt: JwtConfig = { secret: effectiveJwtSecret };
 
-// --- Construct DATABASE_URL for Prisma Client (runtime) ---
 export const DATABASE_URL =
   `postgresql://${encodeURIComponent(db.user)}:${encodeURIComponent(db.password)}` +
   `@${db.host}:${db.port}/${encodeURIComponent(db.name)}?schema=${db.schema}`;
 
-// --- Logging ---
 const safeDbUrl = DATABASE_URL.replace(db.password, '****');
 console.log(`[Config] Loaded for env: ${app.env}`);
 console.log(`[Config] API Port: ${app.port}`);

@@ -1,4 +1,3 @@
-// apps/web/src/app/pages/matter-list/matter-list.component.ts
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -9,7 +8,7 @@ import { catchError } from 'rxjs/operators';
 @Component({
   selector: 'app-matter-list',
   standalone: true,
-  imports: [CommonModule, RouterLink], // Add RouterLink for navigation
+  imports: [CommonModule, RouterLink],
   templateUrl: './matter-list.component.html',
   styleUrls: ['./matter-list.component.css']
 })
@@ -24,7 +23,7 @@ export class MatterListComponent implements OnInit {
       catchError(err => {
         console.error('Error fetching matters:', err);
         this.error = 'Could not load matters. Please try again later.';
-        return of([]); // Return an empty array to keep the stream alive
+        return of([]);
       })
     );
   }

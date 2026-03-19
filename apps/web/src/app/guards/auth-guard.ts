@@ -1,4 +1,3 @@
-// src/app/guards/auth.guard.ts
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
@@ -10,7 +9,6 @@ export const authGuard: CanActivateFn = (route, state) => {
   if (authService.isLoggedIn()) {
     return true;
   } else {
-    // User is not logged in, redirect to login
     router.navigate(['/login']);
     return false;
   }

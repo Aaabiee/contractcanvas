@@ -1,4 +1,3 @@
-// apps/api/src/prisma.ts
 import { PrismaClient } from '@prisma/client';
 import { DATABASE_URL } from './config.js';
 

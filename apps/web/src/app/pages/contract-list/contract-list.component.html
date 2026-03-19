@@ -1,0 +1,20 @@
+<div class="contract-list-container">
+  <h2>Contracts</h2>
+  <div *ngIf="error" class="error-message">{{ error }}</div>
+
+  <ul class="contract-list" *ngIf="contracts$ | async as contracts; else loading">
+    <li *ngIf="contracts.length === 0 && !error" class="empty-list">
+      No contracts found.
+    </li>
+    <li *ngFor="let contract of contracts" class="contract-item">
+      <a [routerLink]="['/contracts', contract.id]">
+        <span class="contract-title">{{ contract.title }}</span>
+        <span class="contract-status status-{{ contract.status.toLowerCase() }}">{{ contract.status }}</span>
+      </a>
+    </li>
+  </ul>
+
+  <ng-template #loading>
+    <p *ngIf="!error">Loading contracts...</p>
+  </ng-template>
+</div>

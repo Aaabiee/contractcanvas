@@ -1,7 +1,8 @@
-// apps/web/src/app/services/matter.service.spec.ts
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { MatterService, Matter } from './matter.service';
+import { HttpErrorResponse } from '@angular/common/http';
 
 describe('MatterService', () => {
   let service: MatterService;
@@ -11,48 +12,75 @@ describe('MatterService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        provideHttpClientTesting(), // Use modern provider
-        MatterService
-      ]
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        MatterService,
+      ],
     });
     service = TestBed.inject(MatterService);
     httpMock = TestBed.inject(HttpTestingController);
   });
 
   afterEach(() => {
-    httpMock.verify(); // Make sure no requests are outstanding
+    httpMock.verify();
   });
 
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
 
-  it('getMatters() should fetch and return an array of matters', () => {
-    const mockMatters: Matter[] = [
-      { id: 'm1', title: 'Matter 1', status: 'OPEN' },
-      { id: 'm2', title: 'Matter 2', status: 'CLOSED' }
-    ];
+  describe('getMatters()', () => {
+    it('fetches and returns an array of matters', () => {
+      const mockMatters: Matter[] = [
+        { id: 'm1', title: 'Matter 1', status: 'OPEN' },
+        { id: 'm2', title: 'Matter 2', status: 'CLOSED' },
+      ];
 
-    service.getMatters().subscribe(matters => {
-      expect(matters.length).toBe(2);
-      expect(matters).toEqual(mockMatters);
+      service.getMatters().subscribe(matters => {
+        expect(matters.length).toBe(2);
+        expect(matters).toEqual(mockMatters);
+      });
+
+      const req = httpMock.expectOne(apiUrl);
+      expect(req.request.method).toBe('GET');
+      req.flush(mockMatters);
     });
 
-    const req = httpMock.expectOne(apiUrl);
-    expect(req.request.method).toBe('GET');
-    req.flush(mockMatters);
+    it('propagates HTTP errors to the subscriber', fakeAsync(() => {
+      let error: HttpErrorResponse | undefined;
+      service.getMatters().subscribe({ error: e => (error = e) });
+
+      const req = httpMock.expectOne(apiUrl);
+      req.flush('Forbidden', { status: 403, statusText: 'Forbidden' });
+      tick();
+
+      expect(error).toBeDefined();
+      expect(error!.status).toBe(403);
+    }));
   });
 
-  it('getMatter(id) should fetch a single matter', () => {
-    const mockMatter: Matter = { id: 'm1', title: 'Matter 1', status: 'OPEN' };
-    const matterId = 'm1';
+  describe('getMatter()', () => {
+    it('fetches a single matter by id', () => {
+      const mockMatter: Matter = { id: 'm1', title: 'Matter 1', status: 'OPEN' };
 
-    service.getMatter(matterId).subscribe(matter => {
-      expect(matter).toEqual(mockMatter);
+      service.getMatter('m1').subscribe(matter => {
+        expect(matter).toEqual(mockMatter);
+      });
+
+      const req = httpMock.expectOne(`${apiUrl}/m1`);
+      expect(req.request.method).toBe('GET');
+      req.flush(mockMatter);
     });
 
-    const req = httpMock.expectOne(`${apiUrl}/${matterId}`);
-    expect(req.request.method).toBe('GET');
-    req.flush(mockMatter);
+    it('propagates 404 errors to the subscriber', fakeAsync(() => {
+      let error: HttpErrorResponse | undefined;
+      service.getMatter('missing').subscribe({ error: e => (error = e) });
+
+      const req = httpMock.expectOne(`${apiUrl}/missing`);
+      req.flush('Not Found', { status: 404, statusText: 'Not Found' });
+      tick();
+
+      expect(error!.status).toBe(404);
+    }));
   });
 });

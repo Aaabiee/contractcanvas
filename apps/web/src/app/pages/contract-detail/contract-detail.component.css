@@ -1,0 +1,58 @@
+.contract-detail-container {
+  padding: 20px;
+}
+.back-link {
+  color: #007bff;
+  text-decoration: none;
+  margin-bottom: 15px;
+  display: inline-block;
+}
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  text-transform: lowercase;
+  background-color: #eee;
+  color: #555;
+  margin-bottom: 16px;
+}
+.status-badge.status-draft { background-color: #e3f2fd; color: #1565c0; }
+.status-badge.status-negotiation { background-color: #fff3e0; color: #e65100; }
+.status-badge.status-pending_signature { background-color: #fce4ec; color: #880e4f; }
+.status-badge.status-executed { background-color: #e8f5e9; color: #2e7d32; }
+.status-badge.status-archived { background-color: #f3e5f5; color: #6a1b9a; }
+.contract-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin-top: 16px;
+}
+.contract-meta dt { font-weight: 600; color: #555; }
+.versions-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+.version-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.version-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid #eee;
+}
+.version-number {
+  font-weight: 700;
+  color: #007bff;
+  min-width: 32px;
+}
+.version-title { flex: 1; }
+.version-size { font-size: 0.85em; color: #777; }
+.version-mime { font-size: 0.8em; color: #999; font-style: italic; }
+.error-message { color: red; }
+.empty-list { color: #777; }

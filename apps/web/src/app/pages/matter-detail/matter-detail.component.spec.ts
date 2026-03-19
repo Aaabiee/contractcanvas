@@ -1,71 +1,113 @@
-// apps/web/src/app/pages/matter-detail/matter-detail.component.spec.ts
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter, ActivatedRoute } from '@angular/router';
-import { of } from 'rxjs';
+import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
+import { of, Subject } from 'rxjs';
 import { MatterDetailComponent } from './matter-detail.component';
 import { MatterService, Matter } from '../../services/matter.service';
-import { Params } from '@angular/router'; // Import Params
-import { convertToParamMap } from '@angular/router'; // Helper for mocking
+import { ContractService } from '../../services/contract.service';
+import { DocumentService } from '../../services/document.service';
 
-const mockMatter: Matter = { id: 'm1', title: 'Test Matter', status: 'OPEN', description: 'Test description' };
+const mockMatter: Matter = {
+  id: 'm1', title: 'Test Matter', status: 'OPEN', description: 'Test description',
+};
 
-// Mock MatterService
 class MockMatterService {
-  getMatter = jest.fn((id: string) => {
-    if (id === 'm1') {
-      return of(mockMatter);
-    }
-    return of(null as any); // Simulate not found
-  });
+  getMatter = jest.fn((id: string) => id === 'm1' ? of(mockMatter) : of(null as any));
+}
+
+class MockContractService {
+  getContracts = jest.fn(() => of([]));
+}
+
+class MockDocumentService {
+  getDocuments = jest.fn(() => of([]));
 }
 
 describe('MatterDetailComponent', () => {
   let component: MatterDetailComponent;
   let fixture: ComponentFixture<MatterDetailComponent>;
-  let matterService: MatterService;
+  let matterService: MockMatterService;
+  let paramMapSubject: Subject<any>;
 
-  // Helper to provide mock route params
-  const mockActivatedRoute = {
-    paramMap: of(convertToParamMap({ id: 'm1' }))
-  };
-
-  beforeEach(async () => {
+  async function setup() {
+    paramMapSubject = new Subject();
     await TestBed.configureTestingModule({
-      imports: [MatterDetailComponent], // Standalone
+      imports: [MatterDetailComponent],
       providers: [
         provideHttpClientTesting(),
-        provideRouter([]), // For RouterLink
+        provideRouter([]),
         { provide: MatterService, useClass: MockMatterService },
-        { provide: ActivatedRoute, useValue: mockActivatedRoute }
-      ]
+        { provide: ContractService, useClass: MockContractService },
+        { provide: DocumentService, useClass: MockDocumentService },
+        { provide: ActivatedRoute, useValue: { paramMap: paramMapSubject.asObservable() } },
+      ],
     }).compileComponents();
-    
+
     fixture = TestBed.createComponent(MatterDetailComponent);
     component = fixture.componentInstance;
-    matterService = TestBed.inject(MatterService);
-  });
+    matterService = TestBed.inject(MatterService) as unknown as MockMatterService;
+  }
 
-  it('should create', () => {
-    fixture.detectChanges(); // Triggers ngOnInit
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('should create', async () => {
+    await setup();
+    fixture.detectChanges();
+    paramMapSubject.next(convertToParamMap({ id: 'm1' }));
+    fixture.detectChanges();
     expect(component).toBeTruthy();
   });
 
-  it('should call getMatter with the ID from the route', () => {
-    fixture.detectChanges(); // ngOnInit
+  it('calls getMatter with the ID from the route', async () => {
+    await setup();
+    fixture.detectChanges();
+    paramMapSubject.next(convertToParamMap({ id: 'm1' }));
     expect(matterService.getMatter).toHaveBeenCalledWith('m1');
   });
 
-  it('should display the matter details', () => {
-    fixture.detectChanges(); // ngOnInit
+  it('displays the matter title, status, and description', async () => {
+    await setup();
+    fixture.detectChanges();
+    paramMapSubject.next(convertToParamMap({ id: 'm1' }));
+    fixture.detectChanges();
+    const h2 = fixture.nativeElement.querySelector('h2');
+    expect(h2.textContent).toBe('Test Matter');
+    const badge = fixture.nativeElement.querySelector('.status-badge');
+    expect(badge.textContent).toBe('OPEN');
+    const desc = fixture.nativeElement.querySelector('.description');
+    expect(desc.textContent).toBe('Test description');
+  });
 
-    const titleEl = fixture.nativeElement.querySelector('h2');
-    expect(titleEl.textContent).toBe('Test Matter');
-    
-    const statusEl = fixture.nativeElement.querySelector('.status-badge');
-    expect(statusEl.textContent).toBe('OPEN');
+  it('sets error when no ID in route params', async () => {
+    await setup();
+    fixture.detectChanges();
+    paramMapSubject.next(convertToParamMap({}));
+    fixture.detectChanges();
+    expect(component.error).toBe('No Matter ID provided in URL.');
+    expect(matterService.getMatter).not.toHaveBeenCalled();
+  });
 
-    const descEl = fixture.nativeElement.querySelector('.description');
-    expect(descEl.textContent).toBe('Test description');
+  it('sets error when getMatter fails', async () => {
+    await setup();
+    const errSubject = new Subject<Matter>();
+    (TestBed.inject(MatterService) as unknown as MockMatterService).getMatter.mockReturnValue(
+      errSubject.asObservable()
+    );
+    fixture.detectChanges();
+    paramMapSubject.next(convertToParamMap({ id: 'm1' }));
+    errSubject.error(new Error('Not found'));
+    fixture.detectChanges();
+    expect(component.error).toBe('Could not load matter details.');
+  });
+
+  it('shows empty contracts and documents sections', async () => {
+    await setup();
+    fixture.detectChanges();
+    paramMapSubject.next(convertToParamMap({ id: 'm1' }));
+    fixture.detectChanges();
+    const emptyTexts = Array.from(fixture.nativeElement.querySelectorAll('.empty-list'))
+      .map((el: any) => el.textContent);
+    expect(emptyTexts.some(t => t.includes('No contracts'))).toBe(true);
+    expect(emptyTexts.some(t => t.includes('No documents'))).toBe(true);
   });
 });

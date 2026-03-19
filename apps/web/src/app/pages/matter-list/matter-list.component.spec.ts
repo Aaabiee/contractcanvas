@@ -1,17 +1,15 @@
-// apps/web/src/app/pages/matter-list/matter-list.component.spec.ts
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { MatterListComponent } from './matter-list.component';
 import { MatterService, Matter } from '../../services/matter.service';
 
 const mockMatters: Matter[] = [
   { id: 'm1', title: 'Matter 1', status: 'OPEN' },
-  { id: 'm2', title: 'Matter 2', status: 'CLOSED' }
+  { id: 'm2', title: 'Matter 2', status: 'CLOSED' },
 ];
 
-// Mock MatterService
 class MockMatterService {
   getMatters = jest.fn(() => of(mockMatters));
 }
@@ -19,36 +17,35 @@ class MockMatterService {
 describe('MatterListComponent', () => {
   let component: MatterListComponent;
   let fixture: ComponentFixture<MatterListComponent>;
-  let matterService: MatterService;
+  let matterService: MockMatterService;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [MatterListComponent], // Standalone
+      imports: [MatterListComponent],
       providers: [
-        provideHttpClientTesting(), // For any other http calls
-        provideRouter([]), // For RouterLink
-        { provide: MatterService, useClass: MockMatterService }
-      ]
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: MatterService, useClass: MockMatterService },
+      ],
     }).compileComponents();
-    
+
     fixture = TestBed.createComponent(MatterListComponent);
     component = fixture.componentInstance;
-    matterService = TestBed.inject(MatterService);
+    matterService = TestBed.inject(MatterService) as unknown as MockMatterService;
   });
 
   it('should create', () => {
-    fixture.detectChanges(); // Triggers ngOnInit
+    fixture.detectChanges();
     expect(component).toBeTruthy();
   });
 
   it('should call getMatters on init', () => {
-    fixture.detectChanges(); // Triggers ngOnInit
+    fixture.detectChanges();
     expect(matterService.getMatters).toHaveBeenCalled();
   });
 
   it('should display a list of matters', () => {
-    fixture.detectChanges(); // ngOnInit -> matters$ is set and subscribed by async pipe
-    
+    fixture.detectChanges();
     const listItems = fixture.nativeElement.querySelectorAll('.matter-item');
     expect(listItems.length).toBe(2);
     expect(listItems[0].textContent).toContain('Matter 1');
@@ -58,13 +55,19 @@ describe('MatterListComponent', () => {
   });
 
   it('should display "No matters found" message when list is empty', () => {
-    // Override the mock for this specific test
     (matterService.getMatters as jest.Mock).mockReturnValue(of([]));
-    
-    fixture.detectChanges(); // ngOnInit -> matters$ is []
-    
+    fixture.detectChanges();
     const emptyMessage = fixture.nativeElement.querySelector('.empty-list');
     expect(emptyMessage).toBeTruthy();
     expect(emptyMessage.textContent).toContain('No matters found.');
+  });
+
+  it('sets error message when getMatters fails', () => {
+    const subject = new Subject<Matter[]>();
+    (matterService.getMatters as jest.Mock).mockReturnValue(subject.asObservable());
+    fixture.detectChanges();
+    subject.error(new Error('Network error'));
+    fixture.detectChanges();
+    expect(component.error).toBe('Could not load matters. Please try again later.');
   });
 });

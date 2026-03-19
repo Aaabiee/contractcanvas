@@ -1,23 +1,15 @@
-// apps/api/src/routes/organizations.ts
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
 
-// Bring in the Prisma namespace for types (TransactionClient, etc.)
 import { Prisma } from '@prisma/client';
-// Import the runtime error class for instanceof checks
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 export const router = Router();
 
-/**
- * Use a stable string-union for roles so we don't depend on generated enum exports.
- * If your schema defines a native enum, these values should match it.
- */
 const ORG_ROLE_VALUES = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 type OrgRole = typeof ORG_ROLE_VALUES[number];
 
-// --- Zod Schemas ---
 const CreateOrgSchema = z.object({
   name: z.string().min(1, { message: 'Organization name is required' }),
   slug: z
@@ -37,12 +29,8 @@ const UpdateMemberSchema = z.object({
   role: z.enum(ORG_ROLE_VALUES),
 });
 
-// --- Routes ---
-
-// POST /api/organizations (Create a new organization)
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Auth check - req.user is typed via your express augmentation
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -56,7 +44,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     }
     const { name, slug } = validation.data;
 
-    // Let the DB uniqueness enforce the slug; Prisma will throw on conflict (P2002)
     const organization = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const newOrg = await tx.organization.create({
         data: { name, slug },
@@ -75,7 +62,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     res.status(201).json(organization);
   } catch (error: unknown) {
-    // Handle Prisma unique constraint errors (like slug already taken)
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
       const target = error.meta?.target;
       const targets = Array.isArray(target) ? (target as string[]) : [];
@@ -84,11 +70,10 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       }
       return res.status(409).json({ error: 'Unique constraint violation' });
     }
-    next(error); // Pass other errors to your central handler
+    next(error);
   }
 });
 
-// GET /api/organizations/me (List orgs the current user is a member of)
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.id;
@@ -127,7 +112,6 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// GET /api/organizations/:orgId/members (List members of a specific org)
 router.get(
   '/:orgId/members',
   async (req: Request, res: Response, next: NextFunction) => {
@@ -137,7 +121,6 @@ router.get(
       }
       const { orgId } = req.params;
 
-      // verify the requester is a member
       const requestingUserMembership = await prisma.organizationMember.findUnique(
         {
           where: {
@@ -169,7 +152,6 @@ router.get(
   }
 );
 
-// POST /api/organizations/:orgId/members (Add a member to an org)
 router.post(
   '/:orgId/members',
   async (req: Request, res: Response, next: NextFunction) => {
@@ -179,7 +161,6 @@ router.post(
       }
       const { orgId } = req.params;
 
-      // Only OWNER/ADMIN can invite
       const inviterMembership = await prisma.organizationMember.findUnique({
         where: {
           organizationId_userId: { organizationId: orgId, userId: req.user.id },
@@ -200,7 +181,6 @@ router.post(
       }
       const { userId, role } = validation.data;
 
-      // Ensure user to be added exists
       const userExists = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true },
@@ -239,7 +219,6 @@ router.post(
   }
 );
 
-// PATCH /api/organizations/:orgId/members/:memberId (Update member role)
 router.patch(
   '/:orgId/members/:memberId',
   async (req: Request, res: Response, next: NextFunction) => {
@@ -249,7 +228,6 @@ router.patch(
       }
       const { orgId, memberId } = req.params;
 
-      // Only OWNER/ADMIN can update roles
       const updaterMembership = await prisma.organizationMember.findUnique({
         where: {
           organizationId_userId: { organizationId: orgId, userId: req.user.id },
@@ -288,7 +266,6 @@ router.patch(
   }
 );
 
-// DELETE /api/organizations/:orgId/members/:memberId (Remove member)
 router.delete(
   '/:orgId/members/:memberId',
   async (req: Request, res: Response, next: NextFunction) => {

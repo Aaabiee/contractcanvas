@@ -1,0 +1,40 @@
+<div class="contract-detail-container">
+  <a routerLink="/contracts" class="back-link">&larr; Back to Contracts</a>
+
+  <div *ngIf="error" class="error-message">{{ error }}</div>
+
+  <ng-container *ngIf="data$ | async as data; else loading">
+    <div *ngIf="data; else notFound">
+      <h2>{{ data.contract.title }}</h2>
+      <span class="status-badge status-{{ data.contract.status.toLowerCase() }}">{{ data.contract.status }}</span>
+
+      <dl class="contract-meta">
+        <dt>Value</dt>
+        <dd>{{ formatCents(data.contract.valueCents, data.contract.currency) }}</dd>
+        <dt>Currency</dt>
+        <dd>{{ data.contract.currency ?? '—' }}</dd>
+      </dl>
+
+      <section class="versions-section">
+        <h3>Version History</h3>
+        <p *ngIf="data.versions.length === 0" class="empty-list">No versions yet.</p>
+        <ul class="version-list" *ngIf="data.versions.length > 0">
+          <li *ngFor="let v of data.versions" class="version-item">
+            <span class="version-number">v{{ v.versionNumber }}</span>
+            <span class="version-title">{{ v.title ?? 'Untitled' }}</span>
+            <span class="version-size">{{ formatBytes(v.sizeBytes) }}</span>
+            <span class="version-mime">{{ v.mimeType }}</span>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </ng-container>
+
+  <ng-template #notFound>
+    <p *ngIf="!error">Contract not found.</p>
+  </ng-template>
+
+  <ng-template #loading>
+    <p *ngIf="!error">Loading contract details...</p>
+  </ng-template>
+</div>
