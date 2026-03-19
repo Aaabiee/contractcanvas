@@ -115,6 +115,11 @@ let effectiveJwtSecret = jwtSecretFromEnv || jwtSecretFromFile || defaultJwtSecr
 if (app.env === 'production' && (!effectiveJwtSecret || effectiveJwtSecret === defaultJwtSecret)) {
   throw new Error('FATAL: JWT_SECRET must be set via environment variable or config.json for production!');
 }
+if (effectiveJwtSecret !== defaultJwtSecret && effectiveJwtSecret.length < 32) {
+  const msg = 'JWT_SECRET must be at least 32 characters long (OWASP HMAC-SHA256 minimum).';
+  if (app.env === 'production') throw new Error(`FATAL: ${msg}`);
+  console.warn(`[Config] WARNING: ${msg}`);
+}
 if (app.env !== 'production' && effectiveJwtSecret === defaultJwtSecret) {
   console.warn('\n-------------------------------------------------------------------');
   console.warn('WARNING: Using insecure default JWT_SECRET. Set JWT_SECRET in .env or config.json.');

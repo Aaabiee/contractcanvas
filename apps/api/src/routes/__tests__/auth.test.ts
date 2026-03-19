@@ -48,8 +48,8 @@ function buildApp() {
 
 const validRegisterPayload = {
   email: 'new@example.com',
-  password: 'password123',
-  confirmPassword: 'password123',
+  password: 'Password1!',
+  confirmPassword: 'Password1!',
   name: { firstName: 'Alice', lastName: 'Smith' },
   role: 'CLIENT',
   orgMode: 'create',

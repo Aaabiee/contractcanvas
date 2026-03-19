@@ -39,6 +39,15 @@ const authLimiter = rateLimit({
   message:          { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
+const apiLimiter = rateLimit({
+  windowMs:         15 * 60 * 1000,
+  max:              300,
+  standardHeaders:  true,
+  legacyHeaders:    false,
+  message:          { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
+});
+
+app.use('/api/', apiLimiter);
 app.use('/api/billing', billing);
 
 app.use(express.json({ limit: '20mb' }));
@@ -47,9 +56,9 @@ app.use('/api/auth', authLimiter, auth);
 
 app.get('/health', (_req, res) => {
   res.json({
-    ok:      true,
-    env:     appCfg.env,
-    db:      { host: db.host, name: db.name },
+    ok:  true,
+    env: appCfg.env,
+    ...(appCfg.env !== 'production' ? { db: { host: db.host, name: db.name } } : {}),
   });
 });
 

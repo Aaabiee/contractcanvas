@@ -14,6 +14,23 @@ import { s3 as s3Config } from '../config.js';
 
 export const router = Router();
 
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'webp',
+]);
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -47,6 +64,11 @@ router.post('/upload', singleFileUpload, async (req, res, next) => {
     const file = (req as any).file as Express.Multer.File | undefined;
     if (!file) {
       return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const ext = (file.originalname.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype) || !ALLOWED_EXTENSIONS.has(ext)) {
+      return res.status(415).json({ error: 'Unsupported file type' });
     }
 
     const metaValidation = UploadMetaSchema.safeParse(req.body);
@@ -149,10 +171,11 @@ router.get('/:id/download', async (req, res, next) => {
       return res.status(404).json({ error: 'Document not found' });
     }
 
+    const safeName = document.filename.replace(/[^\w.\- ]/g, '_').slice(0, 255);
     const command = new GetObjectCommand({
       Bucket:                     s3Config.bucket,
       Key:                        document.storageKey,
-      ResponseContentDisposition: `attachment; filename="${document.filename}"`,
+      ResponseContentDisposition: `attachment; filename="${safeName}"`,
     });
     const url = await getSignedUrl(s3, command, { expiresIn: 300 });
     res.json({ url });

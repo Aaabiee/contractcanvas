@@ -85,6 +85,16 @@ describe('POST /api/documents/upload', () => {
     expect(res.body.error).toBe('No file uploaded');
   });
 
+  it('returns 415 for disallowed file type (e.g. .exe)', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/upload')
+      .attach('file', Buffer.from('MZ\x90\x00'), { filename: 'malware.exe', contentType: 'application/octet-stream' })
+      .field('matterId', validMatterId);
+    expect(res.status).toBe(415);
+    expect(res.body.error).toBe('Unsupported file type');
+  });
+
   it('returns 400 for invalid matterId (not a cuid)', async () => {
     const app = buildApp();
     const res = await request(app)

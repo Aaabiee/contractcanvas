@@ -249,7 +249,7 @@ router.patch(
       const { role } = validation.data;
 
       const updatedMember = await prisma.organizationMember.update({
-        where: { id: memberId },
+        where: { id: memberId, organizationId: orgId },
         data: { role: role as OrgRole },
         include: { user: { select: { id: true, email: true, name: true } } },
       });
@@ -303,7 +303,7 @@ router.delete(
       }
 
       await prisma.organizationMember.delete({
-        where: { id: memberId },
+        where: { id: memberId, organizationId: orgId },
       });
 
       res.status(204).send();
