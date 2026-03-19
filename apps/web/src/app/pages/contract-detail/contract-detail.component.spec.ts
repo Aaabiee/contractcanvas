@@ -11,7 +11,7 @@ const mockContract: Contract = {
 };
 
 const mockVersions: ContractVersion[] = [
-  { id: 'v1', contractId: 'c1', versionNumber: 1, storageKey: 'k1', mimeType: 'application/pdf', sizeBytes: 2048, title: 'Initial draft' },
+  { id: 'v1', contractId: 'c1', number: 1, storageKey: 'k1', mimeType: 'application/pdf', sizeBytes: 2048, title: 'Initial draft' },
 ];
 
 class MockContractService {
