@@ -11,7 +11,7 @@ import { protect } from './middleware/auth.js';
 
 const app = express();
 
-app.set('trust proxy', true);
+app.set('trust proxy', 1); // trust one proxy hop (nginx / load balancer)
 app.use(helmet());
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:4200')
