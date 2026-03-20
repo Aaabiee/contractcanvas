@@ -5,7 +5,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/__tests__/**/*.test.ts'],
-    exclude: ['src/**/__tests__/integration/**'],
+    globalSetup: ['src/__tests__/integration/setup.ts'],
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
