@@ -81,7 +81,7 @@ export class DashboardHomeComponent implements OnInit, AfterViewInit {
   displayName = computed(() => {
     const u = this.authService.currentUser();
     if (!u) return '';
-    return (u as any).displayName?.trim() || u.name?.firstName?.trim() || u.email || '';
+    return (u as any).displayName?.trim() || u.name?.firstName?.trim() || '';
   });
 
   search = new FormControl<string>('', { nonNullable: true });

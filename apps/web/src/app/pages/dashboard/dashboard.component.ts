@@ -87,7 +87,7 @@ export class DashboardComponent {
   displayName = computed(() => {
     const u = this.authService.currentUser();
     if (!u) return '';
-    return (u as any).displayName?.trim() || u.name?.firstName?.trim() || u.email || '';
+    return (u as any).displayName?.trim() || u.name?.firstName?.trim() || '';
   });
 
   userRole = computed<Role>(() => {
