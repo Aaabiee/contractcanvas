@@ -88,7 +88,6 @@ export const tooltipOpts: MatTooltipDefaultOptions = {
     MatSortModule,
     MatSlideToggleModule,
     MatRippleModule,
-    ConfirmLogoutDialogComponent,
   ],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],
