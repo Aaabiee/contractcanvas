@@ -1,26 +1,124 @@
-<div class="matter-list-container">
-  <div class="list-header">
-    <h2>Matters</h2>
-    <span class="total-badge" *ngIf="total() > 0">{{ total() }} total</span>
+<div class="page-shell">
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Matters</h1>
+      <p class="page-sub" *ngIf="!loading()">
+        {{ total() }} matter{{ total() !== 1 ? 's' : '' }} in your workspace
+      </p>
+    </div>
+    <button mat-raised-button color="primary" (click)="openCreate()">
+      <mat-icon>add</mat-icon> New Matter
+    </button>
   </div>
 
-  <div *ngIf="error()" class="error-message">{{ error() }}</div>
-  <div *ngIf="loading()" class="loading-message">Loading matters...</div>
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+      <mat-label>Search matters</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput [formControl]="search" placeholder="Filter by title or description…" />
+    </mat-form-field>
+    <mat-button-toggle-group [formControl]="statusFilter" aria-label="Status filter" class="status-toggle">
+      <mat-button-toggle value="ALL">All</mat-button-toggle>
+      <mat-button-toggle value="OPEN">Open</mat-button-toggle>
+      <mat-button-toggle value="ON_HOLD">On Hold</mat-button-toggle>
+      <mat-button-toggle value="CLOSED">Closed</mat-button-toggle>
+    </mat-button-toggle-group>
+  </div>
 
-  <ul class="matter-list" *ngIf="!loading()">
-    <li *ngIf="matters().length === 0 && !error()" class="empty-list">
-      No matters found.
-    </li>
-    <li *ngFor="let matter of matters()" class="matter-item">
-      <a [routerLink]="['/matters', matter.id]">
-        <span class="matter-title">{{ matter.title }}</span>
-        <span class="matter-status" [class]="'status-' + matter.status.toLowerCase()">{{ matter.status }}</span>
-      </a>
-      <div class="matter-counts" *ngIf="matter._count">
-        <span>{{ matter._count.contracts }} contract(s)</span>
-        <span>{{ matter._count.documents }} doc(s)</span>
-        <span>{{ matter._count.tasks }} task(s)</span>
-      </div>
-    </li>
-  </ul>
+  <!-- Error Banner -->
+  <div *ngIf="error()" class="error-banner">
+    <mat-icon>error_outline</mat-icon> {{ error() }}
+    <button mat-button (click)="load()">Retry</button>
+  </div>
+
+  <!-- Table Card -->
+  <mat-card class="table-card">
+    <div *ngIf="loading()" class="loading-overlay">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+
+    <div class="table-wrap">
+      <table mat-table [dataSource]="dataSource" matSort class="matters-table">
+
+        <ng-container matColumnDef="title">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Matter</th>
+          <td mat-cell *matCellDef="let row">
+            <div class="matter-name">{{ row.title }}</div>
+            <div class="matter-desc" *ngIf="row.description">{{ row.description }}</div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+          <td mat-cell *matCellDef="let row">
+            <span class="status-chip" [class]="'status-chip status-' + row.status.toLowerCase().replaceAll('_', '-')">
+              {{ statusLabel(row.status) }}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="counts">
+          <th mat-header-cell *matHeaderCellDef>Activity</th>
+          <td mat-cell *matCellDef="let row">
+            <div class="counts-row" *ngIf="row._count">
+              <span class="count-item" matTooltip="Contracts">
+                <mat-icon class="count-icon">description</mat-icon>
+                <span>{{ row._count.contracts }}</span>
+              </span>
+              <span class="count-item" matTooltip="Documents">
+                <mat-icon class="count-icon">folder</mat-icon>
+                <span>{{ row._count.documents }}</span>
+              </span>
+              <span class="count-item" matTooltip="Tasks">
+                <mat-icon class="count-icon">task_alt</mat-icon>
+                <span>{{ row._count.tasks }}</span>
+              </span>
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="createdAt">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Created</th>
+          <td mat-cell *matCellDef="let row" class="date-cell">
+            {{ row.createdAt | date:'MMM d, y' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef><span class="sr-only">Actions</span></th>
+          <td mat-cell *matCellDef="let row" class="actions-cell">
+            <button mat-icon-button matTooltip="View matter"
+              (click)="goTo(row); $event.stopPropagation()">
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+            <button mat-icon-button color="warn" matTooltip="Delete matter"
+              (click)="confirmDelete(row, $event)">
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="cols"></tr>
+        <tr mat-row *matRowDef="let row; columns: cols;" class="data-row" (click)="goTo(row)"></tr>
+
+        <tr class="mat-row" *matNoDataRow>
+          <td class="mat-cell" [attr.colspan]="cols.length">
+            <div class="empty-state">
+              <mat-icon class="empty-icon">work_off</mat-icon>
+              <p *ngIf="search.value">No matters match "{{ search.value }}"</p>
+              <p *ngIf="!search.value">No matters yet</p>
+              <button mat-stroked-button color="primary" (click)="openCreate()">
+                <mat-icon>add</mat-icon> Create your first matter
+              </button>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <mat-paginator [pageSizeOptions]="[10, 25, 50]" showFirstLastButtons></mat-paginator>
+  </mat-card>
+
 </div>

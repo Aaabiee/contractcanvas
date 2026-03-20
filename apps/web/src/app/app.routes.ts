@@ -11,6 +11,8 @@ import { ContractDetailComponent } from './pages/contract-detail/contract-detail
 import { TasksComponent } from './pages/tasks/tasks.component';
 import { OrganizationSettingsComponent } from './pages/organization-settings/organization-settings.component';
 import { BillingComponent } from './pages/billing/billing.component';
+import { DocumentsComponent } from './pages/documents/documents.component';
+import { AdminComponent } from './pages/admin/admin.component';
 
 export const routes: Routes = [
   { path: 'login',    component: LoginComponent },
@@ -27,12 +29,14 @@ export const routes: Routes = [
       { path: 'contracts',             component: ContractListComponent },
       { path: 'contracts/:id',         component: ContractDetailComponent },
       { path: 'tasks',                 component: TasksComponent },
-      { path: 'settings/organization', component: OrganizationSettingsComponent },
+      { path: 'documents',             component: DocumentsComponent },
       { path: 'billing',               component: BillingComponent },
+      { path: 'admin',                 component: AdminComponent },
+      { path: 'settings/organization', component: OrganizationSettingsComponent },
       { path: '',                      redirectTo: 'dashboard', pathMatch: 'full' },
     ],
   },
 
-  { path: '',  redirectTo: '/dashboard', pathMatch: 'full' },
+  { path: '',   redirectTo: '/dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: '/login' },
 ];

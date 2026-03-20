@@ -1,20 +1,122 @@
-<div class="contract-list-container">
-  <h2>Contracts</h2>
-  <div *ngIf="error" class="error-message">{{ error }}</div>
+<div class="page-shell">
 
-  <ul class="contract-list" *ngIf="contracts$ | async as contracts; else loading">
-    <li *ngIf="contracts.length === 0 && !error" class="empty-list">
-      No contracts found.
-    </li>
-    <li *ngFor="let contract of contracts" class="contract-item">
-      <a [routerLink]="['/contracts', contract.id]">
-        <span class="contract-title">{{ contract.title }}</span>
-        <span class="contract-status status-{{ contract.status.toLowerCase() }}">{{ contract.status }}</span>
-      </a>
-    </li>
-  </ul>
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Contracts</h1>
+      <p class="page-sub" *ngIf="!loading()">
+        {{ total() }} contract{{ total() !== 1 ? 's' : '' }} in your workspace
+      </p>
+    </div>
+    <button mat-raised-button color="primary" (click)="openCreate()">
+      <mat-icon>add</mat-icon> New Contract
+    </button>
+  </div>
 
-  <ng-template #loading>
-    <p *ngIf="!error">Loading contracts...</p>
-  </ng-template>
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+      <mat-label>Search contracts</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput [formControl]="search" placeholder="Filter by title or matter…" />
+    </mat-form-field>
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="status-field">
+      <mat-label>Status</mat-label>
+      <mat-select [formControl]="statusFilter">
+        <mat-option *ngFor="let opt of statusOptions" [value]="opt.value">
+          {{ opt.label }}
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  <!-- Error Banner -->
+  <div *ngIf="error()" class="error-banner">
+    <mat-icon>error_outline</mat-icon> {{ error() }}
+    <button mat-button (click)="load()">Retry</button>
+  </div>
+
+  <!-- Table Card -->
+  <mat-card class="table-card">
+    <div *ngIf="loading()" class="loading-overlay">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+
+    <div class="table-wrap">
+      <table mat-table [dataSource]="dataSource" matSort class="contracts-table">
+
+        <ng-container matColumnDef="title">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Contract</th>
+          <td mat-cell *matCellDef="let row">
+            <div class="contract-name">{{ row.title }}</div>
+            <div class="contract-versions" *ngIf="row._count?.versions">
+              <mat-icon class="tiny-icon">history</mat-icon>
+              {{ row._count.versions }} version{{ row._count.versions !== 1 ? 's' : '' }}
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="matter">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Matter</th>
+          <td mat-cell *matCellDef="let row" class="matter-cell">
+            <span *ngIf="row.matter">{{ row.matter.title }}</span>
+            <span *ngIf="!row.matter" class="muted">—</span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+          <td mat-cell *matCellDef="let row">
+            <span class="status-chip" [class]="'status-chip status-' + row.status.toLowerCase().replaceAll('_', '-')">
+              {{ statusLabel(row.status) }}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="value">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Value</th>
+          <td mat-cell *matCellDef="let row" class="value-cell">{{ formatValue(row) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="createdAt">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Created</th>
+          <td mat-cell *matCellDef="let row" class="date-cell">
+            {{ row.createdAt | date:'MMM d, y' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef><span class="sr-only">Actions</span></th>
+          <td mat-cell *matCellDef="let row" class="actions-cell">
+            <button mat-icon-button matTooltip="View contract"
+              (click)="goTo(row); $event.stopPropagation()">
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+            <button mat-icon-button color="warn" matTooltip="Delete contract"
+              (click)="confirmDelete(row, $event)">
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="cols"></tr>
+        <tr mat-row *matRowDef="let row; columns: cols;" class="data-row" (click)="goTo(row)"></tr>
+
+        <tr class="mat-row" *matNoDataRow>
+          <td class="mat-cell" [attr.colspan]="cols.length">
+            <div class="empty-state">
+              <mat-icon class="empty-icon">description</mat-icon>
+              <p *ngIf="search.value">No contracts match "{{ search.value }}"</p>
+              <p *ngIf="!search.value">No contracts yet</p>
+              <button mat-stroked-button color="primary" (click)="openCreate()">
+                <mat-icon>add</mat-icon> Create your first contract
+              </button>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <mat-paginator [pageSizeOptions]="[10, 25, 50]" showFirstLastButtons></mat-paginator>
+  </mat-card>
+
 </div>
