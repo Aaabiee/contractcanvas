@@ -103,7 +103,7 @@ describe('AuthService', () => {
       };
 
       service.register(payload).subscribe();
-      const req = httpMock.expectOne('/api/auth/register');
+      const req = httpMock.expectOne('/api/auth/register?autoLogin=1');
       expect(req.request.method).toBe('POST');
       req.flush(response);
       tick();
