@@ -8,33 +8,27 @@
       <mat-icon>gavel</mat-icon>
       <span class="brand">ContractCanvas</span>
     </div>
-
     <mat-nav-list>
       <a mat-list-item routerLink="/dashboard" routerLinkActive="active">
         <mat-icon matListItemIcon>space_dashboard</mat-icon>
         <span matListItemTitle>Dashboard</span>
       </a>
-
       <a mat-list-item routerLink="/matters" routerLinkActive="active">
         <mat-icon matListItemIcon>work</mat-icon>
         <span matListItemTitle>Matters</span>
       </a>
-
       <a mat-list-item routerLink="/contracts" routerLinkActive="active">
         <mat-icon matListItemIcon>description</mat-icon>
         <span matListItemTitle>Contracts</span>
       </a>
-
       <a mat-list-item routerLink="/documents" routerLinkActive="active">
         <mat-icon matListItemIcon>cloud_upload</mat-icon>
         <span matListItemTitle>Documents</span>
       </a>
-
       <a mat-list-item routerLink="/billing" routerLinkActive="active">
         <mat-icon matListItemIcon>credit_card</mat-icon>
         <span matListItemTitle>Billing</span>
       </a>
-
       <a *ngIf="canSeeAdmin()" mat-list-item routerLink="/admin" routerLinkActive="active">
         <mat-icon matListItemIcon>admin_panel_settings</mat-icon>
         <span matListItemTitle>Admin</span>
@@ -44,24 +38,11 @@
 
   <mat-sidenav-content>
     <mat-toolbar color="primary" class="topbar">
-      <button
-        type="button"
-        mat-icon-button
-        (click)="snav.toggle()"
-        class="menu-btn"
-        aria-label="Toggle sidenav"
-      >
+      <button type="button" mat-icon-button (click)="snav.toggle()" class="menu-btn" aria-label="Toggle sidenav">
         <mat-icon>menu</mat-icon>
       </button>
-
       <span class="flex-1"></span>
-
-      <button
-        mat-icon-button
-        [matMenuTriggerFor]="userMenu"
-        aria-label="Open user menu"
-        matTooltip="Account"
-      >
+      <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="Open user menu" matTooltip="Account">
         <mat-icon>account_circle</mat-icon>
       </button>
       <mat-menu #userMenu="matMenu">
@@ -82,98 +63,7 @@
     </mat-toolbar>
 
     <div class="page">
-      <!-- Greeting -->
-      <div class="header-row">
-        <div class="title-wrap">
-          <h1>Welcome, {{ displayName() || 'there' }} 👋</h1>
-          <p class="subtitle">
-            Here’s a snapshot of your workspace. Use quick actions to get moving.
-          </p>
-        </div>
-
-        <div class="quick-actions">
-          <button
-            *ngFor="let qa of quickActions()"
-            mat-raised-button
-            color="primary"
-            class="qa-btn"
-            [routerLink]="qa.to"
-            [matTooltip]="qa.tip"
-          >
-            <mat-icon class="qa-icon">{{ qa.icon }}</mat-icon>
-            {{ qa.label }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Stats cards -->
-      <section class="cards">
-        <mat-card
-          *ngFor="let s of stats()"
-          class="stat-card"
-          [class.clickable]="!!s.link"
-          (click)="s.link && goTo(s.link)"
-        >
-          <div class="stat">
-            <mat-icon class="stat-icon" [ngClass]="s.color">{{ s.icon }}</mat-icon>
-            <div class="stat-meta">
-              <div class="value">{{ s.value }}</div>
-              <div class="label">{{ s.label }}</div>
-            </div>
-          </div>
-        </mat-card>
-      </section>
-
-      <div class="grid">
-        <!-- Recent activity -->
-        <mat-card class="pane">
-          <mat-card-header>
-            <mat-card-title>
-              <mat-icon>update</mat-icon>
-              <span class="ml-8">Recent activity</span>
-            </mat-card-title>
-          </mat-card-header>
-          <mat-divider></mat-divider>
-          <mat-card-content>
-            @if (!loading()) {
-              <mat-list>
-                <mat-list-item
-                  *ngFor="let r of recent()"
-                  class="activity-item"
-                  (click)="goTo(r.link)"
-                >
-                  <mat-icon matListItemIcon>{{ r.icon }}</mat-icon>
-                  <div matListItemTitle>{{ r.text }}</div>
-                  <div matListItemLine class="when">{{ r.when }}</div>
-                </mat-list-item>
-              </mat-list>
-            } @else {
-              <div class="center">
-                <mat-progress-spinner mode="indeterminate" diameter="36"></mat-progress-spinner>
-              </div>
-            }
-          </mat-card-content>
-        </mat-card>
-
-        <!-- Filters -->
-        <mat-card class="pane">
-          <mat-card-header>
-            <mat-card-title>
-              <mat-icon>tune</mat-icon>
-              <span class="ml-8">Filters</span>
-            </mat-card-title>
-          </mat-card-header>
-          <mat-divider></mat-divider>
-          <mat-card-content>
-            <mat-chip-listbox aria-label="Filter by" multiple>
-              <mat-chip-option>Open</mat-chip-option>
-              <mat-chip-option selected>In review</mat-chip-option>
-              <mat-chip-option>Executed</mat-chip-option>
-              <mat-chip-option>Blocked</mat-chip-option>
-            </mat-chip-listbox>
-          </mat-card-content>
-        </mat-card>
-      </div>
+      <router-outlet></router-outlet>
     </div>
   </mat-sidenav-content>
 </mat-sidenav-container>

@@ -1,0 +1,150 @@
+<!-- Greeting -->
+<div class="header-row">
+  <div class="title-wrap">
+    <h1>Welcome, {{ displayName() || 'there' }} 👋</h1>
+    <p class="subtitle">
+      Here's a snapshot of your workspace. Use quick actions to get moving.
+    </p>
+  </div>
+
+  <div class="quick-actions">
+    <button
+      *ngFor="let qa of quickActions()"
+      mat-raised-button
+      color="primary"
+      class="qa-btn"
+      [routerLink]="qa.to"
+      [matTooltip]="qa.tip"
+    >
+      <mat-icon class="qa-icon">{{ qa.icon }}</mat-icon>
+      {{ qa.label }}
+    </button>
+  </div>
+</div>
+
+<!-- Stats cards -->
+<section class="cards">
+  <mat-card
+    *ngFor="let s of stats(); trackBy: statTrackBy"
+    class="stat-card"
+    [class.clickable]="s.value >= 1"
+    (click)="goStatCard(s)"
+  >
+    <div class="stat">
+      <mat-icon class="stat-icon" [ngClass]="s.color">{{ s.icon }}</mat-icon>
+      <div class="stat-meta">
+        <div class="value">{{ s.value }}</div>
+        <div class="label">{{ s.label }}</div>
+      </div>
+    </div>
+  </mat-card>
+</section>
+
+<div class="grid">
+  <!-- Recent activity -->
+  <mat-card class="pane">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>update</mat-icon>
+        <span class="ml-8">Recent activity</span>
+      </mat-card-title>
+    </mat-card-header>
+    <mat-divider></mat-divider>
+    <mat-card-content>
+      @if (!loading()) {
+        <mat-list>
+          <mat-list-item
+            *ngFor="let r of recentFiltered(); trackBy: recentTrackBy"
+            class="activity-item"
+            (click)="goTo(r.link)"
+          >
+            <mat-icon matListItemIcon>{{ r.icon }}</mat-icon>
+            <div matListItemTitle>{{ r.text }}</div>
+            <div matListItemLine class="when">{{ r.when }}</div>
+          </mat-list-item>
+        </mat-list>
+      } @else {
+        <div class="center">
+          <mat-progress-spinner mode="indeterminate" diameter="36"></mat-progress-spinner>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Filters -->
+  <mat-card class="pane">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>tune</mat-icon>
+        <span class="ml-8">Filters</span>
+      </mat-card-title>
+    </mat-card-header>
+    <mat-divider></mat-divider>
+    <mat-card-content>
+      <mat-chip-listbox aria-label="Filter by" multiple>
+        <mat-chip-option>Open</mat-chip-option>
+        <mat-chip-option selected>In review</mat-chip-option>
+        <mat-chip-option>Executed</mat-chip-option>
+        <mat-chip-option>Blocked</mat-chip-option>
+      </mat-chip-listbox>
+    </mat-card-content>
+  </mat-card>
+</div>
+
+<!-- Tasks table -->
+<mat-card class="pane">
+  <mat-card-header>
+    <mat-card-title>
+      <mat-icon>task_alt</mat-icon>
+      <span class="ml-8">Pending Tasks</span>
+    </mat-card-title>
+    <span class="flex-1"></span>
+    <mat-form-field class="search-field" appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Search tasks</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput [formControl]="search" placeholder="Filter…" />
+    </mat-form-field>
+  </mat-card-header>
+  <mat-divider></mat-divider>
+  <mat-card-content>
+    <div class="table-wrap">
+      <table mat-table [dataSource]="dataSource" matSort>
+        <ng-container matColumnDef="title">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Title</th>
+          <td mat-cell *matCellDef="let row">{{ row.title }}</td>
+        </ng-container>
+        <ng-container matColumnDef="due">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Due</th>
+          <td mat-cell *matCellDef="let row">{{ row.due }}</td>
+        </ng-container>
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+          <td mat-cell *matCellDef="let row">{{ row.status }}</td>
+        </ng-container>
+        <ng-container matColumnDef="assignee">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Assignee</th>
+          <td mat-cell *matCellDef="let row">{{ row.assignee }}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let row">
+            <button mat-icon-button matTooltip="Open" (click)="openTask(row)">
+              <mat-icon>open_in_new</mat-icon>
+            </button>
+            <button mat-icon-button matTooltip="Mark done" (click)="markDone(row)">
+              <mat-icon>check_circle_outline</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+        <tr class="mat-row" *matNoDataRow>
+          <td class="mat-cell" [attr.colspan]="displayedColumns.length" style="text-align:center; padding:1rem;">
+            No tasks found.
+          </td>
+        </tr>
+      </table>
+    </div>
+    <mat-paginator [pageSizeOptions]="[5, 10, 25]" showFirstLastButtons></mat-paginator>
+  </mat-card-content>
+</mat-card>
