@@ -55,8 +55,20 @@ export class RegisterComponent {
   hidePassword = true;
   hideConfirm = true;
   errorMessage = '';
+  loading = false;
 
   readonly roles: AppRole[] = ['CLIENT', 'LAWYER', 'PARALEGAL', 'ADMIN'];
+
+  get passwordErrors(): string[] {
+    const p = this.password;
+    const errors: string[] = [];
+    if (p.length > 0 && p.length < 8)      errors.push('At least 8 characters');
+    if (p.length > 0 && !/[A-Z]/.test(p))  errors.push('One uppercase letter');
+    if (p.length > 0 && !/[a-z]/.test(p))  errors.push('One lowercase letter');
+    if (p.length > 0 && !/[0-9]/.test(p))  errors.push('One number');
+    if (p.length > 0 && !/[^A-Za-z0-9]/.test(p)) errors.push('One special character');
+    return errors;
+  }
 
   onRegister(): void {
     this.errorMessage = '';
@@ -95,11 +107,13 @@ export class RegisterComponent {
         organizationSlug: this.slugify(this.organizationSlug || this.organizationName),
       };
 
+      this.loading = true;
       this.authService.register(payload).subscribe({
         next: () => {
+          this.loading = false;
           this.router.navigateByUrl('/');
         },
-        error: (err) => this.handleError(err),
+        error: (err) => { this.loading = false; this.handleError(err); },
       });
     } else {
       const payload: RegisterPayloadJoin = {
@@ -108,11 +122,13 @@ export class RegisterComponent {
         inviteToken: this.inviteToken.trim(),
       };
 
+      this.loading = true;
       this.authService.register(payload).subscribe({
         next: () => {
+          this.loading = false;
           this.router.navigateByUrl('/');
         },
-        error: (err) => this.handleError(err),
+        error: (err) => { this.loading = false; this.handleError(err); },
       });
     }
   }

@@ -87,10 +87,12 @@ export class AuthService {
   }
 
   register(payload: RegisterPayload): Observable<RegisterResponse> {
-    return this.http.post<RegisterResponse>(`${this.apiUrl}/register`, payload).pipe(
+    return this.http.post<RegisterResponse>(`${this.apiUrl}/register?autoLogin=1`, payload).pipe(
       tap((res) => {
-        this.storeToken(res.token);
-        this.currentUser.set(res.user);
+        if (res.token) {
+          this.storeToken(res.token);
+          this.currentUser.set(res.user);
+        }
       })
     );
   }
