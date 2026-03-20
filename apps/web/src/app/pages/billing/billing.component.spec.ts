@@ -7,6 +7,12 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
+// Provide a clipboard mock since jsdom doesn't implement navigator.clipboard
+Object.defineProperty(navigator, 'clipboard', {
+  value: { writeText: jest.fn().mockResolvedValue(undefined) },
+  configurable: true,
+});
+
 const mockInvoice = { clientSecret: 'pi_test_secret', invoiceId: 'inv-1', amountCents: 50000, currency: 'usd' };
 
 describe('BillingComponent', () => {
@@ -58,5 +64,30 @@ describe('BillingComponent', () => {
     component.createInvoice();
     expect(snackMock.open).toHaveBeenCalledWith('Stripe error', 'Dismiss', expect.any(Object));
     expect(component.submitting()).toBe(false);
+  });
+
+  it('should use fallback message when error has no message', () => {
+    billingServiceMock.createInvoice.mockReturnValue(throwError(() => ({})));
+    component.invoiceForm.setValue({ contractId: 'c-1', amount: 100, currency: 'usd' });
+    component.createInvoice();
+    expect(snackMock.open).toHaveBeenCalledWith('Failed to create invoice.', 'Dismiss', expect.any(Object));
+  });
+
+  it('createInvoice returns early when form is invalid', () => {
+    component.createInvoice(); // form is empty/invalid
+    expect(billingServiceMock.createInvoice).not.toHaveBeenCalled();
+  });
+
+  it('copySecret does nothing when invoiceResult is null', () => {
+    component.invoiceResult.set(null);
+    component.copySecret();
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
+  it('copySecret writes clientSecret to clipboard and shows snackbar', () => {
+    component.invoiceResult.set(mockInvoice);
+    component.copySecret();
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('pi_test_secret');
+    expect(snackMock.open).toHaveBeenCalledWith('Copied to clipboard.', 'OK', expect.any(Object));
   });
 });

@@ -53,6 +53,14 @@ describe('ContractService', () => {
       req.flush({ data: [], total: 0, limit: 50, offset: 0 });
     });
 
+    it('passes limit and offset params', () => {
+      service.getContracts(undefined, { limit: 10, offset: 20 }).subscribe();
+      const req = httpMock.expectOne(r =>
+        r.url === apiUrl && r.params.get('limit') === '10' && r.params.get('offset') === '20'
+      );
+      req.flush({ data: [], total: 0, limit: 10, offset: 20 });
+    });
+
     it('propagates HTTP errors', fakeAsync(() => {
       let error: HttpErrorResponse | undefined;
       service.getContracts().subscribe({ error: e => (error = e) });

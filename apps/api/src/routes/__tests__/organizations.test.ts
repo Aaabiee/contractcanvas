@@ -233,6 +233,124 @@ describe('PATCH /api/organizations/:orgId/members/:memberId', () => {
   });
 });
 
+describe('POST /api/organizations/:orgId/members — 401 when no user', () => {
+  it('returns 401 when user is not authenticated', async () => {
+    const app = buildAppNoUser();
+    const res = await request(app).post('/org-1/members').send({ userId: 'clxxxxxxxxxxxxxxxxxxxx', role: 'MEMBER' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 400 for invalid userId (not a cuid)', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    const app = buildApp();
+    const res = await request(app).post('/org-1/members').send({ userId: 'not-a-cuid', role: 'MEMBER' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 409 when user is already a member (P2002)', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-2' });
+    const { PrismaClientKnownRequestError } = await import('@prisma/client/runtime/library');
+    const err = Object.create(PrismaClientKnownRequestError.prototype);
+    Object.assign(err, { code: 'P2002', message: 'Unique' });
+    mockPrisma.organizationMember.create.mockRejectedValue(err);
+    const app = buildApp();
+    const res = await request(app).post('/org-1/members').send({ userId: 'clxxxxxxxxxxxxxxxxxxxx', role: 'MEMBER' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already a member/i);
+  });
+
+  it('returns 404 when foreign key violation (P2003)', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-2' });
+    const { PrismaClientKnownRequestError } = await import('@prisma/client/runtime/library');
+    const err = Object.create(PrismaClientKnownRequestError.prototype);
+    Object.assign(err, { code: 'P2003', message: 'Foreign key' });
+    mockPrisma.organizationMember.create.mockRejectedValue(err);
+    const app = buildApp();
+    const res = await request(app).post('/org-1/members').send({ userId: 'clxxxxxxxxxxxxxxxxxxxx', role: 'MEMBER' });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('PATCH /api/organizations/:orgId/members/:memberId — auth and error paths', () => {
+  it('returns 401 when user is not authenticated', async () => {
+    const app = buildAppNoUser();
+    const res = await request(app).patch('/org-1/members/m1').send({ role: 'ADMIN' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 when member not found (P2025)', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    const { PrismaClientKnownRequestError } = await import('@prisma/client/runtime/library');
+    const err = Object.create(PrismaClientKnownRequestError.prototype);
+    Object.assign(err, { code: 'P2025', message: 'Not found' });
+    mockPrisma.organizationMember.update.mockRejectedValue(err);
+    const app = buildApp();
+    const res = await request(app).patch('/org-1/members/m-nonexistent').send({ role: 'ADMIN' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+});
+
+describe('DELETE /api/organizations/:orgId/members/:memberId — auth and error paths', () => {
+  it('returns 401 when user is not authenticated', async () => {
+    const app = buildAppNoUser();
+    const res = await request(app).delete('/org-1/members/m1');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 when P2025 thrown during delete', async () => {
+    mockPrisma.organizationMember.findUnique
+      .mockResolvedValueOnce({ id: 'm1', organizationId: 'org-1', userId: 'user-1', role: 'MEMBER' })
+      .mockResolvedValueOnce({ role: 'ADMIN' });
+    const { PrismaClientKnownRequestError } = await import('@prisma/client/runtime/library');
+    const err = Object.create(PrismaClientKnownRequestError.prototype);
+    Object.assign(err, { code: 'P2025', message: 'Not found' });
+    mockPrisma.organizationMember.delete.mockRejectedValue(err);
+    const app = buildApp('user-1');
+    const res = await request(app).delete('/org-1/members/m1');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('error propagation via next(err)', () => {
+  function buildAppWithErrorHandler() {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('GET /me propagates DB errors', async () => {
+    mockPrisma.organizationMember.findMany.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler()).get('/me');
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:orgId/members propagates DB errors', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'MEMBER' });
+    mockPrisma.organizationMember.findMany.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler()).get('/org-1/members');
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /api/organizations — P2002 with non-slug target', () => {
+  it('returns 409 with generic message for non-slug unique constraint', async () => {
+    const { PrismaClientKnownRequestError } = await import('@prisma/client/runtime/library');
+    const err = Object.create(PrismaClientKnownRequestError.prototype);
+    Object.assign(err, { code: 'P2002', meta: { target: ['name'] }, message: 'Unique' });
+    mockPrisma.$transaction.mockRejectedValue(err);
+    const app = buildApp();
+    const res = await request(app).post('/').send({ name: 'Acme', slug: 'acme' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/unique constraint/i);
+  });
+});
+
 describe('DELETE /api/organizations/:orgId/members/:memberId', () => {
   it('returns 404 when member not found in org', async () => {
     mockPrisma.organizationMember.findUnique.mockResolvedValueOnce(null);

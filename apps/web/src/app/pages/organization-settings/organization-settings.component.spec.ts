@@ -20,6 +20,7 @@ describe('OrganizationSettingsComponent', () => {
   let fixture: ComponentFixture<OrganizationSettingsComponent>;
   let component: OrganizationSettingsComponent;
   let orgService: jest.Mocked<OrganizationService>;
+  let snackMock: { open: jest.Mock };
 
   beforeEach(async () => {
     const orgServiceMock = {
@@ -30,7 +31,7 @@ describe('OrganizationSettingsComponent', () => {
       updateMember:       jest.fn(),
     };
     const authServiceMock = { currentUser: () => ({ id: 'user-1' }) };
-    const snackMock = { open: jest.fn() };
+    snackMock = { open: jest.fn() };
 
     await TestBed.configureTestingModule({
       imports: [OrganizationSettingsComponent],
@@ -38,9 +39,12 @@ describe('OrganizationSettingsComponent', () => {
         provideHttpClient(), provideHttpClientTesting(), provideAnimations(),
         { provide: OrganizationService, useValue: orgServiceMock },
         { provide: AuthService,         useValue: authServiceMock },
-        { provide: MatSnackBar,         useValue: snackMock },
       ],
-    }).compileComponents();
+    })
+      .overrideComponent(OrganizationSettingsComponent, {
+        add: { providers: [{ provide: MatSnackBar, useValue: snackMock }] },
+      })
+      .compileComponents();
 
     orgService = TestBed.inject(OrganizationService) as jest.Mocked<OrganizationService>;
     fixture    = TestBed.createComponent(OrganizationSettingsComponent);
@@ -56,6 +60,20 @@ describe('OrganizationSettingsComponent', () => {
     expect(component.members()).toHaveLength(2);
   });
 
+  it('should not call loadMembers when no orgs returned', async () => {
+    orgService.getMyOrganizations.mockReturnValue(of([]));
+    orgService.getMembers.mockClear();
+    component.ngOnInit();
+    expect(orgService.getMembers).not.toHaveBeenCalled();
+  });
+
+  it('should show snackbar on loadMembers error', () => {
+    orgService.getMembers.mockReturnValue(throwError(() => new Error('fail')));
+    component.loadMembers();
+    expect(snackMock.open).toHaveBeenCalledWith('Failed to load members.', 'Dismiss', expect.any(Object));
+    expect(component.loading()).toBe(false);
+  });
+
   it('should invite a member', () => {
     const newMember = { ...mockMembers[1], id: 'mem-3', userId: 'user-3' };
     orgService.addMember.mockReturnValue(of(newMember));
@@ -63,6 +81,29 @@ describe('OrganizationSettingsComponent', () => {
     component.inviteRole.setValue('MEMBER');
     component.inviteMember();
     expect(orgService.addMember).toHaveBeenCalledWith('org-1', { email: 'new@acme.com', role: 'MEMBER' });
+    expect(snackMock.open).toHaveBeenCalledWith('Member invited successfully.', 'OK', expect.any(Object));
+    expect(component.inviting()).toBe(false);
+  });
+
+  it('should not call addMember when inviteEmail is invalid', () => {
+    component.inviteEmail.setValue('not-an-email');
+    component.inviteMember();
+    expect(orgService.addMember).not.toHaveBeenCalled();
+  });
+
+  it('should show error with server message when invite fails', () => {
+    orgService.addMember.mockReturnValue(throwError(() => ({ error: { message: 'Already a member' } })));
+    component.inviteEmail.setValue('existing@acme.com');
+    component.inviteMember();
+    expect(snackMock.open).toHaveBeenCalledWith('Already a member', 'Dismiss', expect.any(Object));
+    expect(component.inviting()).toBe(false);
+  });
+
+  it('should use fallback message when invite fails without server message', () => {
+    orgService.addMember.mockReturnValue(throwError(() => ({})));
+    component.inviteEmail.setValue('other@acme.com');
+    component.inviteMember();
+    expect(snackMock.open).toHaveBeenCalledWith('Failed to invite member.', 'Dismiss', expect.any(Object));
   });
 
   it('should remove a member', () => {
@@ -70,5 +111,22 @@ describe('OrganizationSettingsComponent', () => {
     component.removeMember(mockMembers[1]);
     expect(orgService.removeMember).toHaveBeenCalledWith('org-1', 'mem-2');
     expect(component.members().find(m => m.id === 'mem-2')).toBeUndefined();
+  });
+
+  it('should show snackbar on removeMember error', () => {
+    orgService.removeMember.mockReturnValue(throwError(() => new Error('fail')));
+    component.removeMember(mockMembers[0]);
+    expect(snackMock.open).toHaveBeenCalledWith('Failed to remove member.', 'Dismiss', expect.any(Object));
+  });
+
+  describe('roleColor()', () => {
+    it('returns warn for OWNER', () => expect(component.roleColor('OWNER')).toBe('warn'));
+    it('returns accent for ADMIN', () => expect(component.roleColor('ADMIN')).toBe('accent'));
+    it('returns primary for MEMBER', () => expect(component.roleColor('MEMBER')).toBe('primary'));
+  });
+
+  it('currentUserId returns empty string when currentUser returns null', () => {
+    (component as any).authService = { currentUser: () => null };
+    expect(component.currentUserId()).toBe('');
   });
 });

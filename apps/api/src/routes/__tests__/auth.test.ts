@@ -217,6 +217,282 @@ describe('POST /api/auth/login', () => {
   });
 });
 
+describe('POST /api/auth/register — schema validation edge cases', () => {
+  it('returns 400 when organizationSlug is missing in create mode', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ ...validRegisterPayload, organizationSlug: undefined });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when organizationSlug is missing in join mode', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        ...validRegisterPayload,
+        orgMode: 'join',
+        organizationSlug: undefined,
+        organizationName: undefined,
+        acceptTerms: undefined,
+      });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/auth/register — join mode', () => {
+  it('returns 404 when orgMode is join and org slug does not exist', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        ...validRegisterPayload,
+        orgMode: 'join',
+        organizationSlug: 'non-existent',
+        organizationName: undefined,
+        acceptTerms: undefined,
+      });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/organization not found/i);
+  });
+
+  it('registers user as MEMBER when joining existing org', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme' });
+    mockBcrypt.hash.mockResolvedValue('hashed-password');
+
+    const newUser = { id: 'u1', email: 'new@example.com', firstName: 'Alice', lastName: 'Smith', name: 'Alice Smith', role: 'CLIENT', createdAt: new Date() };
+    const newOrg  = { id: 'org-1', name: 'Acme', slug: 'acme' };
+    mockPrisma.$transaction.mockResolvedValue({ user: newUser, organization: newOrg });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        ...validRegisterPayload,
+        orgMode: 'join',
+        organizationSlug: 'acme',
+        organizationName: undefined,
+        acceptTerms: undefined,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe('new@example.com');
+    expect(res.body.redirectTo).toBe('/login');
+  });
+});
+
+describe('POST /api/auth/register — password validation', () => {
+  it('returns 400 when password has no uppercase letter', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ ...validRegisterPayload, password: 'password1!', confirmPassword: 'password1!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when password has no lowercase letter', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ ...validRegisterPayload, password: 'PASSWORD1!', confirmPassword: 'PASSWORD1!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when password has no number', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ ...validRegisterPayload, password: 'Password!!', confirmPassword: 'Password!!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when password has no special character', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ ...validRegisterPayload, password: 'Password123', confirmPassword: 'Password123' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/auth/register — autoLogin and redirect flags', () => {
+  beforeEach(() => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    mockBcrypt.hash.mockResolvedValue('hashed-password');
+    const newUser = { id: 'u1', email: 'new@example.com', firstName: 'Alice', lastName: 'Smith', name: 'Alice Smith', role: 'CLIENT', createdAt: new Date() };
+    const newOrg  = { id: 'org-1', name: 'Acme Law', slug: 'acme-law' };
+    mockPrisma.$transaction.mockResolvedValue({ user: newUser, organization: newOrg });
+  });
+
+  it('returns a token when autoLogin=1 is set', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register?autoLogin=1')
+      .send(validRegisterPayload);
+    expect(res.status).toBe(201);
+    expect(res.body.token).toBeTruthy();
+    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
+    expect(decoded.sub).toBe('u1');
+  });
+
+  it('does not return a token when autoLogin is not set', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send(validRegisterPayload);
+    expect(res.status).toBe(201);
+    expect(res.body.token).toBeUndefined();
+  });
+
+  it('returns 303 with redirectTo when redirect=1 is set', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register?redirect=1')
+      .send(validRegisterPayload);
+    expect(res.status).toBe(303);
+    expect(res.body.redirectTo).toBe('/login');
+  });
+});
+
+describe('POST /api/auth/register — transaction callback executed', () => {
+  it('executes the transaction callback (create mode) and creates user, org, and membership', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    mockBcrypt.hash.mockResolvedValue('hashed-password');
+
+    const newUser = { id: 'u1', email: 'new@example.com', firstName: 'Alice', lastName: 'Smith', name: 'Alice Smith', role: 'CLIENT', createdAt: new Date() };
+    const newOrg  = { id: 'org-1', name: 'Acme Law', slug: 'acme-law' };
+
+    mockPrisma.$transaction.mockImplementation(async (fn: any) => {
+      const tx = {
+        user: { create: vi.fn().mockResolvedValue(newUser) },
+        organization: { create: vi.fn().mockResolvedValue(newOrg) },
+        organizationMember: { create: vi.fn().mockResolvedValue({}) },
+      };
+      return fn(tx);
+    });
+
+    const app = buildApp();
+    const res = await request(app).post('/auth/register').send(validRegisterPayload);
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe('new@example.com');
+    expect(res.body.organization.slug).toBe('acme-law');
+  });
+
+  it('executes the transaction callback (join mode) and creates user and membership in existing org', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme' });
+    mockBcrypt.hash.mockResolvedValue('hashed-password');
+
+    const newUser = { id: 'u2', email: 'new@example.com', firstName: 'Alice', lastName: 'Smith', name: 'Alice Smith', role: 'CLIENT', createdAt: new Date() };
+
+    mockPrisma.$transaction.mockImplementation(async (fn: any) => {
+      const tx = {
+        user: { create: vi.fn().mockResolvedValue(newUser) },
+        organization: { create: vi.fn() },
+        organizationMember: { create: vi.fn().mockResolvedValue({}) },
+      };
+      return fn(tx);
+    });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ ...validRegisterPayload, orgMode: 'join', organizationSlug: 'acme', organizationName: undefined, acceptTerms: undefined });
+
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('POST /api/auth/register — P2002 conflict handling', () => {
+  it('returns 409 with email message when Prisma P2002 targets email', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    mockBcrypt.hash.mockResolvedValue('hash');
+
+    const err: any = new Error('Unique');
+    err.code = 'P2002';
+    err.meta = { target: ['email'] };
+    mockPrisma.$transaction.mockRejectedValue(err);
+
+    const app = buildApp();
+    const res = await request(app).post('/auth/register').send(validRegisterPayload);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already exists/i);
+  });
+
+  it('returns 409 with slug message when Prisma P2002 targets slug', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    mockBcrypt.hash.mockResolvedValue('hash');
+
+    const err: any = new Error('Unique');
+    err.code = 'P2002';
+    err.meta = { target: ['slug'] };
+    mockPrisma.$transaction.mockRejectedValue(err);
+
+    const app = buildApp();
+    const res = await request(app).post('/auth/register').send(validRegisterPayload);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/slug/i);
+  });
+});
+
+describe('POST /api/auth/login — error paths', () => {
+  it('propagates unexpected errors from login via next(err)', async () => {
+    mockPrisma.user.findUnique.mockRejectedValue(new Error('DB crash'));
+    const app = buildApp();
+    const appWithHandler = express();
+    appWithHandler.use(express.json());
+    appWithHandler.use('/auth', (await import('../auth.js')).router);
+    appWithHandler.use((err: any, _req: any, res: any, _next: any) => {
+      res.status(500).json({ error: err.message });
+    });
+    const res = await request(appWithHandler).post('/auth/login').send({ email: 'a@b.com', password: 'pass' });
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /api/auth/refresh-token', () => {
+  it('returns a new JWT token for the authenticated user', async () => {
+    const user = { id: 'u1', email: 'a@b.com', firstName: 'A', lastName: 'B', name: 'A B', role: 'LAWYER' };
+    mockPrisma.user.findUnique.mockResolvedValue(user);
+    mockPrisma.organizationMember.findMany.mockResolvedValue([
+      { role: 'OWNER', createdAt: new Date(), organization: { id: 'org-1', name: 'Acme', slug: 'acme' } },
+    ]);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/refresh-token')
+      .set('Authorization', 'Bearer any-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeTruthy();
+    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
+    expect(decoded.sub).toBe('u1');
+    expect(decoded.organizations).toHaveLength(1);
+  });
+
+  it('returns 401 when user is not found during refresh', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/refresh-token')
+      .set('Authorization', 'Bearer any-token');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('User not found');
+  });
+});
+
 describe('GET /api/auth/me', () => {
   it('returns the authenticated user from req.user', async () => {
     const app = buildApp();

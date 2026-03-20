@@ -118,3 +118,34 @@ describe('PATCH /api/notifications/:id/read', () => {
     });
   });
 });
+
+describe('error propagation via next(err)', () => {
+  function buildAppWithErrorHandler() {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      res.status(500).json({ error: err.message });
+    });
+    return app;
+  }
+
+  it('GET / propagates DB errors to next(err)', async () => {
+    mockPrisma.notification.findMany.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler()).get('/');
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /read-all propagates DB errors to next(err)', async () => {
+    mockPrisma.notification.updateMany.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler()).patch('/read-all');
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /:id/read propagates DB errors to next(err)', async () => {
+    mockPrisma.notification.findFirst.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler()).patch('/notif-1/read');
+    expect(res.status).toBe(500);
+  });
+});

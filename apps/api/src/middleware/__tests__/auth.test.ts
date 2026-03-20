@@ -205,6 +205,79 @@ describe('optionalAuth middleware', () => {
   });
 });
 
+describe('protect middleware — token payload edge cases', () => {
+  it('returns 401 when token has no sub and no user_id/uid', async () => {
+    // Token without sub — toUser will produce id='' → protect rejects
+    const token = signToken({ email: 'a@b.com', role: 'LAWYER' });
+    const req = makeReq({ header: vi.fn().mockReturnValue(`Bearer ${token}`) });
+    const { res, statusFn } = makeRes();
+    const next = makeNext();
+
+    await protect(req, res, next);
+
+    expect(statusFn).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('accepts token where emails is an array (Azure AD style)', async () => {
+    const orgs = [{ id: 'org-1', name: 'Acme', slug: 'acme', role: 'OWNER' }];
+    const token = signToken({ sub: 'user-1', emails: ['a@b.com'], organizations: orgs });
+    const req = makeReq({ header: vi.fn().mockReturnValue(`Bearer ${token}`) });
+    const { res } = makeRes();
+    const next = makeNext();
+
+    await protect(req, res, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user.email).toBe('a@b.com');
+  });
+
+  it('extracts role from singular "role" claim via fallback loop', async () => {
+    const orgs = [{ id: 'org-1', name: 'Acme', slug: 'acme', role: 'OWNER' }];
+    const token = signToken({ sub: 'user-1', role: 'lawyer', organizations: orgs });
+    const req = makeReq({ header: vi.fn().mockReturnValue(`Bearer ${token}`) });
+    const { res } = makeRes();
+    const next = makeNext();
+
+    await protect(req, res, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user.role).toBe('LAWYER');
+  });
+
+  it('extracts org roles from org_roles claim', async () => {
+    const orgs = [{ id: 'org-1', name: 'Acme', slug: 'acme', role: 'OWNER' }];
+    const token = signToken({ sub: 'user-1', roles: ['lawyer'], org_roles: ['owner'], organizations: orgs });
+    const req = makeReq({ header: vi.fn().mockReturnValue(`Bearer ${token}`) });
+    const { res } = makeRes();
+    const next = makeNext();
+
+    await protect(req, res, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user.orgRole).toBe('OWNER');
+    expect(req.user.orgRoles).toContain('OWNER');
+  });
+
+  it('resolves user_id as id fallback when no sub', async () => {
+    // This hits the id=sub || user_id || uid branch in toUser, but since sub is missing → empty string → 401
+    // Instead verify the user_id path by providing it without sub
+    // The protect() returns 401 for missing id, so we just confirm user_id is not enough without sub
+    const token = signToken({ user_id: 'uid-from-firebase', email: 'a@b.com' });
+    const req = makeReq({ header: vi.fn().mockReturnValue(`Bearer ${token}`) });
+    const { res, statusFn } = makeRes();
+    const next = makeNext();
+
+    await protect(req, res, next);
+
+    // user_id becomes id, but sub is undefined, so id = 'uid-from-firebase' (truthy)
+    // However protect checks !user.id → only 401 if empty
+    // user.id = 'uid-from-firebase' which is truthy → next() gets called
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user.id).toBe('uid-from-firebase');
+  });
+});
+
 describe('requireRole middleware factory', () => {
   it('returns 401 when req.user is not set', () => {
     const guard = requireRole('ADMIN');

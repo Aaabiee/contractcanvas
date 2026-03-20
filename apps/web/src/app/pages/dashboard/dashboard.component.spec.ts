@@ -1,10 +1,10 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
 import { AuthService } from '../../services/auth.service';
 import { MatterService } from '../../services/matter.service';
@@ -119,6 +119,18 @@ describe('DashboardComponent', () => {
     expect(component.themeDark()).toBe(false);
   });
 
+  it('effect writes dark theme to localStorage when toggled true', () => {
+    component.toggleTheme(true);
+    fixture.detectChanges(); // flush effects
+    expect(localStorage.getItem('cc.theme')).toBe('dark');
+  });
+
+  it('effect writes light theme to localStorage when toggled false', () => {
+    component.toggleTheme(false);
+    fixture.detectChanges(); // flush effects
+    expect(localStorage.getItem('cc.theme')).toBe('light');
+  });
+
   it('recentFiltered returns all items when searchValue is empty', () => {
     component.searchValue.set('');
     expect(component.recentFiltered().length).toBe(component.recent().length);
@@ -141,4 +153,130 @@ describe('DashboardComponent', () => {
     component.goTo('/matters');
     expect(navSpy).toHaveBeenCalledWith(['/matters']);
   });
+
+  it('openTask shows a snackbar with the task title', () => {
+    component.openTask({ title: 'Review NDA', id: 't1' });
+    expect(snackBar.open).toHaveBeenCalledWith('Open task: Review NDA', 'OK', expect.any(Object));
+  });
+
+  it('markDone shows a snackbar with the task title', () => {
+    component.markDone({ title: 'Send invoice', id: 't2' });
+    expect(snackBar.open).toHaveBeenCalledWith('Marked done: Send invoice', 'Undo', expect.any(Object));
+  });
+
+  it('loadStats populates stats from API responses', () => {
+    const matterService = TestBed.inject(MatterService) as unknown as MockMatterService;
+    const contractService = TestBed.inject(ContractService) as unknown as MockContractService;
+    const taskService = TestBed.inject(TaskService) as unknown as MockTaskService;
+    const notifService = TestBed.inject(NotificationService) as unknown as MockNotificationService;
+
+    matterService.getMatters.mockReturnValue(of({ data: [], total: 5, limit: 1, offset: 0 }));
+    contractService.getContracts.mockReturnValue(of({ data: [], total: 3, limit: 1, offset: 0 }));
+    taskService.getTasks.mockReturnValue(of({ data: [], total: 8, limit: 1, offset: 0 }));
+    notifService.getNotifications.mockReturnValue(of({ data: [], total: 2, unreadCount: 2, limit: 1, offset: 0 }));
+
+    component.loadStats();
+
+    const stats = component.stats();
+    expect(stats.find(s => s.label === 'Open Matters')!.value).toBe(5);
+    expect(stats.find(s => s.label === 'Active Contracts')!.value).toBe(3);
+    expect(stats.find(s => s.label === 'Pending Tasks')!.value).toBe(8);
+    expect(stats.find(s => s.label === 'Unread Alerts')!.value).toBe(2);
+  });
+
+  it('loadStats handles errors gracefully and uses fallback values', () => {
+    const matterService = TestBed.inject(MatterService) as unknown as MockMatterService;
+    const { throwError } = require('rxjs');
+    matterService.getMatters.mockReturnValue(throwError(() => new Error('network error')));
+
+    expect(() => component.loadStats()).not.toThrow();
+    const stats = component.stats();
+    expect(stats.find(s => s.label === 'Open Matters')!.value).toBe(0);
+  });
+
+  it('statTrackBy returns the label', () => {
+    expect(component.statTrackBy(0, { label: 'Open Matters', value: 5, icon: 'work', color: 'primary', link: '/' }))
+      .toBe('Open Matters');
+  });
+
+  it('qaTrackBy returns the label', () => {
+    expect(component.qaTrackBy(0, { label: 'New Matter', icon: 'add', tip: '', to: '/' })).toBe('New Matter');
+  });
+
+  it('recentTrackBy returns text + when concatenated', () => {
+    expect(component.recentTrackBy(0, { text: 'Comment on NDA', when: '2h ago', icon: '', link: '/' }))
+      .toBe('Comment on NDA2h ago');
+  });
+
+  it('filterPredicate matches row when any field contains the filter string', () => {
+    component.ngAfterViewInit();
+    const pred = component.dataSource.filterPredicate;
+    const row  = { title: 'NDA Review', due: '1/1/2024', status: 'Pending', assignee: 'Alice', id: 't1' };
+    expect(pred(row, 'nda')).toBe(true);
+    expect(pred(row, 'xyz')).toBe(false);
+  });
+
+  it('ngOnInit maps tasks with dueAt, completedAt, and assignee branches', fakeAsync(() => {
+    const taskService = TestBed.inject(TaskService) as unknown as MockTaskService;
+    taskService.getTasks.mockReturnValue(of({
+      data: [
+        {
+          id: 't1', title: 'Task A',
+          dueAt: '2024-06-01T00:00:00Z',
+          completedAt: '2024-05-01T00:00:00Z',
+          assignee: { id: 'u1', firstName: 'Alice', lastName: 'Smith', email: 'a@b.com' },
+        },
+        {
+          id: 't2', title: 'Task B',
+          dueAt: null, completedAt: null, assignee: null,
+        },
+      ],
+      total: 2, limit: 10, offset: 0,
+    }));
+    component.ngOnInit();
+    tick();
+    const rows = component.dataSource.data;
+    expect(rows[0].due).not.toBe('—');
+    expect(rows[0].status).toBe('Done');
+    expect(rows[0].assignee).toBe('Alice Smith');
+    expect(rows[1].due).toBe('—');
+    expect(rows[1].status).toBe('Pending');
+    expect(rows[1].assignee).toBe('Unassigned');
+  }));
+
+  it('ngOnInit tasks catchError returns empty data on task service error', fakeAsync(() => {
+    const taskService = TestBed.inject(TaskService) as unknown as MockTaskService;
+    taskService.getTasks.mockReturnValue(throwError(() => new Error('network')));
+    component.ngOnInit();
+    tick();
+    expect(component.dataSource.data).toEqual([]);
+  }));
+
+  it('loadStats handles contracts service error gracefully', () => {
+    const contractService = TestBed.inject(ContractService) as unknown as MockContractService;
+    contractService.getContracts.mockReturnValue(throwError(() => new Error('fail')));
+    expect(() => component.loadStats()).not.toThrow();
+    expect(component.stats().find(s => s.label === 'Active Contracts')!.value).toBe(0);
+  });
+
+  it('loadStats handles tasks service error gracefully', () => {
+    const taskService = TestBed.inject(TaskService) as unknown as MockTaskService;
+    taskService.getTasks.mockReturnValue(throwError(() => new Error('fail')));
+    expect(() => component.loadStats()).not.toThrow();
+    expect(component.stats().find(s => s.label === 'Pending Tasks')!.value).toBe(0);
+  });
+
+  it('loadStats handles notification service error gracefully', () => {
+    const notifService = TestBed.inject(NotificationService) as unknown as MockNotificationService;
+    notifService.getNotifications.mockReturnValue(throwError(() => new Error('fail')));
+    expect(() => component.loadStats()).not.toThrow();
+    expect(component.stats().find(s => s.label === 'Unread Alerts')!.value).toBe(0);
+  });
+
+  it('ngAfterViewInit sets dataSource.filter on search value change', fakeAsync(() => {
+    component.ngAfterViewInit();
+    component.search.setValue('test query');
+    tick(300); // advance past debounceTime(200)
+    expect(component.dataSource.filter).toBe('test query');
+  }));
 });

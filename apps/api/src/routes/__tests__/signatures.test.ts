@@ -193,3 +193,34 @@ describe('GET /api/signatures/:id', () => {
     expect(res.body.id).toBe('env-1');
   });
 });
+
+describe('error propagation via next(err)', () => {
+  function buildWithErrHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: orgId }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1' });
+    mockPrisma.signatureEnvelope.create.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler())
+      .post('/').send({ contractId: 'clxxxxxxxxxxxxxxxxxxxx', provider: 'docusign', recipients: [{ email: 'a@b.com', name: 'A', role: 'signer' }] });
+    expect(res.status).toBe(500);
+  });
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.signatureEnvelope.findMany.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/?contractId=c1');
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:id propagates DB errors', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/env-1');
+    expect(res.status).toBe(500);
+  });
+});

@@ -51,6 +51,44 @@ describe('TaskService', () => {
       const req = httpMock.expectOne(r => r.url === apiUrl && r.params.get('completed') === 'false');
       req.flush({ data: [], total: 0, limit: 20, offset: 0 });
     });
+
+    it('passes assigneeId filter', () => {
+      service.getTasks({ assigneeId: 'user-5' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === apiUrl && r.params.get('assigneeId') === 'user-5');
+      req.flush({ data: [], total: 0, limit: 20, offset: 0 });
+    });
+
+    it('passes limit param', () => {
+      service.getTasks({ limit: 5 }).subscribe();
+      const req = httpMock.expectOne(r => r.url === apiUrl && r.params.get('limit') === '5');
+      req.flush({ data: [], total: 0, limit: 5, offset: 0 });
+    });
+
+    it('passes offset param', () => {
+      service.getTasks({ offset: 20 }).subscribe();
+      const req = httpMock.expectOne(r => r.url === apiUrl && r.params.get('offset') === '20');
+      req.flush({ data: [], total: 0, limit: 20, offset: 20 });
+    });
+  });
+
+  describe('getTask()', () => {
+    it('fetches a single task by id', () => {
+      service.getTask('task-1').subscribe(t => expect(t).toEqual(sampleTask));
+      const req = httpMock.expectOne(`${apiUrl}/task-1`);
+      expect(req.request.method).toBe('GET');
+      req.flush(sampleTask);
+    });
+  });
+
+  describe('updateTask()', () => {
+    it('PATCHes the task with given payload', () => {
+      const updated = { ...sampleTask, title: 'Updated title' };
+      service.updateTask('task-1', { title: 'Updated title' }).subscribe(t => expect(t.title).toBe('Updated title'));
+      const req = httpMock.expectOne(`${apiUrl}/task-1`);
+      expect(req.request.method).toBe('PATCH');
+      expect(req.request.body).toEqual({ title: 'Updated title' });
+      req.flush(updated);
+    });
   });
 
   describe('createTask()', () => {

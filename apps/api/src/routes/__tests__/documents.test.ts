@@ -304,3 +304,39 @@ describe('DELETE /api/documents/:id', () => {
     );
   });
 });
+
+describe('error propagation via next(err)', () => {
+  function buildWithErrHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: orgId }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.document.findMany.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get(`/?matterId=${validMatterId}`);
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:id propagates DB errors', async () => {
+    mockPrisma.document.findFirst.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/doc-1');
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:id/download propagates DB errors', async () => {
+    mockPrisma.document.findFirst.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/doc-1/download');
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.document.findFirst.mockResolvedValue({ id: 'doc-1', matterId: validMatterId, organizationId: 'org-1' });
+    mockPrisma.document.update.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).delete('/doc-1');
+    expect(res.status).toBe(500);
+  });
+});

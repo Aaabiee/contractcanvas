@@ -79,4 +79,13 @@ describe('errorInterceptor', () => {
     req.flush('Not Found', { status: 404, statusText: 'Not Found' });
     expect(authService.logout).not.toHaveBeenCalled();
   });
+
+  it('handles network error (status 0) without calling logout', () => {
+    let thrownError: any;
+    http.get('/api/data').subscribe({ error: err => (thrownError = err) });
+    const req = httpMock.expectOne('/api/data');
+    req.flush(null, { status: 0, statusText: 'Unknown Error' });
+    expect(authService.logout).not.toHaveBeenCalled();
+    expect(thrownError).toBeTruthy();
+  });
 });

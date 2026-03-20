@@ -98,6 +98,24 @@ describe('GET /api/comments', () => {
       expect.objectContaining({ where: expect.objectContaining({ contractId: 'contract-3' }) })
     );
   });
+
+  it('filters by documentId', async () => {
+    mockPrisma.comment.findMany.mockResolvedValue([]);
+    mockPrisma.comment.count.mockResolvedValue(0);
+    await request(buildApp()).get('/?documentId=doc-7');
+    expect(mockPrisma.comment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ documentId: 'doc-7' }) })
+    );
+  });
+
+  it('filters by contractVersionId', async () => {
+    mockPrisma.comment.findMany.mockResolvedValue([]);
+    mockPrisma.comment.count.mockResolvedValue(0);
+    await request(buildApp()).get('/?contractVersionId=cv-9');
+    expect(mockPrisma.comment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ contractVersionId: 'cv-9' }) })
+    );
+  });
 });
 
 describe('POST /api/comments', () => {
@@ -131,6 +149,11 @@ describe('POST /api/comments', () => {
 });
 
 describe('PATCH /api/comments/:id', () => {
+  it('returns 403 when no active organization', async () => {
+    const res = await request(buildAppNoOrg()).patch('/comment-1').send({ bodyMd: 'x' });
+    expect(res.status).toBe(403);
+  });
+
   it('returns 404 when comment not found or not authored by user', async () => {
     mockPrisma.comment.findFirst.mockResolvedValue(null);
     const res = await request(buildApp()).patch('/comment-99').send({ bodyMd: 'Updated' });
@@ -156,6 +179,11 @@ describe('PATCH /api/comments/:id', () => {
 });
 
 describe('DELETE /api/comments/:id', () => {
+  it('returns 403 when no active organization', async () => {
+    const res = await request(buildAppNoOrg()).delete('/comment-1');
+    expect(res.status).toBe(403);
+  });
+
   it('returns 404 when comment not found', async () => {
     mockPrisma.comment.findFirst.mockResolvedValue(null);
     const res = await request(buildApp()).delete('/comment-99');
@@ -168,5 +196,43 @@ describe('DELETE /api/comments/:id', () => {
     const res = await request(buildApp()).delete('/comment-1');
     expect(res.status).toBe(204);
     expect(mockPrisma.comment.delete).toHaveBeenCalledWith({ where: { id: 'comment-1' } });
+  });
+});
+
+describe('error propagation via next(err)', () => {
+  function buildAppWithErrorHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: orgId }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.comment.findMany.mockRejectedValue(new Error('DB'));
+    const res = await request(buildAppWithErrorHandler()).get('/?contractId=c1');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.comment.create.mockRejectedValue(new Error('DB'));
+    const res = await request(buildAppWithErrorHandler())
+      .post('/').send({ contractId: 'clxxxxxxxxxxxxxxxxxxxx', bodyMd: 'hi' });
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /:id propagates DB errors', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue({ id: 'c1', authorId: 'user-1' });
+    mockPrisma.comment.update.mockRejectedValue(new Error('DB'));
+    const res = await request(buildAppWithErrorHandler()).patch('/c1').send({ bodyMd: 'x' });
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue({ id: 'c1', authorId: 'user-1' });
+    mockPrisma.comment.delete.mockRejectedValue(new Error('DB'));
+    const res = await request(buildAppWithErrorHandler()).delete('/c1');
+    expect(res.status).toBe(500);
   });
 });

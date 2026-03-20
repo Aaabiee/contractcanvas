@@ -110,9 +110,32 @@ describe('GET /api/tasks', () => {
       expect.objectContaining({ where: expect.objectContaining({ completedAt: { not: null } }) })
     );
   });
+
+  it('filters pending tasks when completed=false', async () => {
+    mockPrisma.task.findMany.mockResolvedValue([]);
+    mockPrisma.task.count.mockResolvedValue(0);
+    await request(buildApp()).get('/?completed=false');
+    expect(mockPrisma.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ completedAt: null }) })
+    );
+  });
+
+  it('filters by assigneeId when provided', async () => {
+    mockPrisma.task.findMany.mockResolvedValue([]);
+    mockPrisma.task.count.mockResolvedValue(0);
+    await request(buildApp()).get('/?assigneeId=user-5');
+    expect(mockPrisma.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ assigneeId: 'user-5' }) })
+    );
+  });
 });
 
 describe('GET /api/tasks/:id', () => {
+  it('returns 403 when no active organization', async () => {
+    const res = await request(buildAppNoOrg()).get('/task-1');
+    expect(res.status).toBe(403);
+  });
+
   it('returns 404 when task not found', async () => {
     mockPrisma.task.findFirst.mockResolvedValue(null);
     const res = await request(buildApp()).get('/task-999');
@@ -145,6 +168,21 @@ describe('POST /api/tasks', () => {
     expect(res.body.error).toMatch(/Matter not found/);
   });
 
+  it('creates task with dueAt when provided', async () => {
+    const dueAt = '2026-12-31T00:00:00.000Z';
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'matter-1' });
+    mockPrisma.task.create.mockResolvedValue({ ...sampleTask, dueAt: new Date(dueAt) });
+    const res = await request(buildApp('org-1', 'user-5'))
+      .post('/')
+      .send({ title: 'Task with due date', matterId: 'cltest1234567890123456789', dueAt });
+    expect(res.status).toBe(201);
+    expect(mockPrisma.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ dueAt: expect.any(Date) }),
+      })
+    );
+  });
+
   it('creates task with organizationId', async () => {
     mockPrisma.matter.findFirst.mockResolvedValue({ id: 'matter-1' });
     mockPrisma.task.create.mockResolvedValue({ ...sampleTask, title: 'New Task' });
@@ -161,6 +199,11 @@ describe('POST /api/tasks', () => {
 });
 
 describe('PATCH /api/tasks/:id', () => {
+  it('returns 403 when no active organization', async () => {
+    const res = await request(buildAppNoOrg()).patch('/task-1').send({ title: 'X' });
+    expect(res.status).toBe(403);
+  });
+
   it('returns 404 when task not found', async () => {
     mockPrisma.task.findFirst.mockResolvedValue(null);
     const res = await request(buildApp()).patch('/task-999').send({ title: 'X' });
@@ -176,6 +219,34 @@ describe('PATCH /api/tasks/:id', () => {
     expect(mockPrisma.task.update).toHaveBeenCalled();
   });
 
+  it('clears completedAt when set to null (reopen)', async () => {
+    mockPrisma.task.findFirst.mockResolvedValue({ ...sampleTask, completedAt: new Date() });
+    mockPrisma.task.update.mockResolvedValue({ ...sampleTask, completedAt: null });
+    const res = await request(buildApp()).patch('/task-1').send({ completedAt: null });
+    expect(res.status).toBe(200);
+    expect(mockPrisma.task.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ completedAt: null }) })
+    );
+  });
+
+  it('updates dueAt when provided as a date string', async () => {
+    const dueAt = '2026-12-31T00:00:00.000Z';
+    mockPrisma.task.findFirst.mockResolvedValue(sampleTask);
+    mockPrisma.task.update.mockResolvedValue({ ...sampleTask, dueAt: new Date(dueAt) });
+    const res = await request(buildApp()).patch('/task-1').send({ dueAt });
+    expect(res.status).toBe(200);
+  });
+
+  it('clears dueAt when set to null', async () => {
+    mockPrisma.task.findFirst.mockResolvedValue({ ...sampleTask, dueAt: new Date() });
+    mockPrisma.task.update.mockResolvedValue({ ...sampleTask, dueAt: null });
+    const res = await request(buildApp()).patch('/task-1').send({ dueAt: null });
+    expect(res.status).toBe(200);
+    expect(mockPrisma.task.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ dueAt: null }) })
+    );
+  });
+
   it('returns 400 for invalid body', async () => {
     const res = await request(buildApp()).patch('/task-1').send({ title: '' });
     expect(res.status).toBe(400);
@@ -183,6 +254,11 @@ describe('PATCH /api/tasks/:id', () => {
 });
 
 describe('DELETE /api/tasks/:id', () => {
+  it('returns 403 when no active organization', async () => {
+    const res = await request(buildAppNoOrg()).delete('/task-1');
+    expect(res.status).toBe(403);
+  });
+
   it('returns 404 when task not found', async () => {
     mockPrisma.task.findFirst.mockResolvedValue(null);
     const res = await request(buildApp()).delete('/task-999');
@@ -195,5 +271,51 @@ describe('DELETE /api/tasks/:id', () => {
     const res = await request(buildApp()).delete('/task-1');
     expect(res.status).toBe(204);
     expect(mockPrisma.task.delete).toHaveBeenCalledWith({ where: { id: 'task-1' } });
+  });
+});
+
+describe('error propagation via next(err)', () => {
+  function buildAppWithErrorHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: orgId }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.task.findMany.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler()).get('/');
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:id propagates DB errors', async () => {
+    mockPrisma.task.findFirst.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler()).get('/task-1');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'cltest1234567890123456789' });
+    mockPrisma.task.create.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler())
+      .post('/')
+      .send({ title: 'T', matterId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /:id propagates DB errors', async () => {
+    mockPrisma.task.findFirst.mockResolvedValue(sampleTask);
+    mockPrisma.task.update.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler()).patch('/task-1').send({ title: 'X' });
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.task.findFirst.mockResolvedValue(sampleTask);
+    mockPrisma.task.delete.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildAppWithErrorHandler()).delete('/task-1');
+    expect(res.status).toBe(500);
   });
 });

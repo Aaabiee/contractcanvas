@@ -93,6 +93,15 @@ describe('RegisterComponent', () => {
     expect(spy).toHaveBeenCalledWith('/');
   });
 
+  it('shows error on join mode registration failure', () => {
+    (authService.register as jest.Mock).mockReturnValue(throwError(() => ({ status: 409 })));
+    setValidForm(component);
+    component.orgMode = 'join';
+    component.inviteToken = 'invite-xyz';
+    component.onRegister();
+    expect(component.errorMessage).toBe('This email is already in use.');
+  });
+
   it('shows 409 error when email is already in use', () => {
     (authService.register as jest.Mock).mockReturnValue(throwError(() => ({ status: 409 })));
     setValidForm(component);
@@ -135,5 +144,23 @@ describe('RegisterComponent', () => {
     setValidForm(component);
     component.onRegister();
     expect(component.errorMessage).toBe('Registration failed. Please try again.');
+  });
+
+  it('includes displayName in payload when set', () => {
+    setValidForm(component);
+    component.displayName = 'Alice Smith';
+    component.onRegister();
+    expect(authService.register).toHaveBeenCalledWith(
+      expect.objectContaining({ name: expect.objectContaining({ displayName: 'Alice Smith' }) })
+    );
+  });
+
+  it('uses organizationName as slug when organizationSlug is empty', () => {
+    setValidForm(component);
+    component.organizationSlug = '';
+    component.onRegister();
+    expect(authService.register).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationSlug: 'acme' })
+    );
   });
 });

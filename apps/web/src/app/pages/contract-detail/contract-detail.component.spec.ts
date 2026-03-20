@@ -122,6 +122,7 @@ describe('ContractDetailComponent', () => {
     fixture.detectChanges();
     expect(component.formatCents(150000, 'USD')).toBe('$1,500.00');
     expect(component.formatCents(null, null)).toBe('—');
+    expect(component.formatCents(100, null)).toBe('$1.00'); // null currency defaults to USD
   });
 
   it('formatBytes returns human-readable size', async () => {

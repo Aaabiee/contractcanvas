@@ -151,3 +151,23 @@ describe('AuthService', () => {
     }));
   });
 });
+
+describe('AuthService constructor with pre-existing token', () => {
+  afterEach(() => localStorage.clear());
+
+  it('calls getMe on construction when token already exists', fakeAsync(() => {
+    localStorage.setItem('contractcanvas_auth_token', 'boot-token');
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [provideRouter([]), AuthService],
+    });
+    const svc  = TestBed.inject(AuthService);
+    const http = TestBed.inject(HttpTestingController);
+    const req  = http.expectOne('/api/auth/me');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer boot-token');
+    req.flush({ id: 'u9', email: 'boot@test.com', name: { firstName: 'Boot', lastName: 'User' }, role: 'ADMIN' as const });
+    tick();
+    expect(svc.currentUser()?.id).toBe('u9');
+    http.verify();
+  }));
+});

@@ -316,3 +316,63 @@ describe('GET /api/contracts/:contractId/versions', () => {
     );
   });
 });
+
+describe('error propagation via next(err)', () => {
+  function buildWithErrHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: orgId }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.contract.findMany.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'clxxxxxxxxxxxxxxxxxxxx' });
+    mockPrisma.contract.create.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler())
+      .post('/').send({ matterId: 'clxxxxxxxxxxxxxxxxxxxx', title: 'T', status: 'DRAFT' });
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:id propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/c1');
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /:id propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1' });
+    mockPrisma.contract.update.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).patch('/c1').send({ status: 'EXECUTED' });
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1' });
+    mockPrisma.contract.update.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).delete('/c1');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST /:contractId/versions propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1' });
+    mockPrisma.$transaction.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler())
+      .post('/c1/versions').send({ storageKey: 'orgs/x/y.pdf', mimeType: 'application/pdf', sizeBytes: 1024 });
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:contractId/versions propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1' });
+    mockPrisma.contractVersion.findMany.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/c1/versions');
+    expect(res.status).toBe(500);
+  });
+});

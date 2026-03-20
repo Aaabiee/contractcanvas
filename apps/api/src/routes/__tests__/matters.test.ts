@@ -233,3 +233,46 @@ describe('DELETE /api/matters/:id', () => {
     );
   });
 });
+
+describe('error propagation via next(err)', () => {
+  function buildWithErrHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: orgId }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.matter.findMany.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.matter.create.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).post('/').send({ title: 'T', status: 'OPEN' });
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /:id propagates DB errors', async () => {
+    mockPrisma.matter.findFirst.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).get('/m1');
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /:id propagates DB errors', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'm1' });
+    mockPrisma.matter.update.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).patch('/m1').send({ status: 'CLOSED' });
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'm1' });
+    mockPrisma.matter.update.mockRejectedValue(new Error('DB'));
+    const res = await request(buildWithErrHandler()).delete('/m1');
+    expect(res.status).toBe(500);
+  });
+});
