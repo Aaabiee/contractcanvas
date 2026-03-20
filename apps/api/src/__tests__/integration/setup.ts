@@ -12,7 +12,12 @@
  */
 
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+
+// Resolve the apps/api root regardless of the process cwd
+const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 let container: StartedPostgreSqlContainer;
 
@@ -49,11 +54,14 @@ export async function setup(): Promise<void> {
   // JWT secret used by both the route (signing) and protect middleware (verifying)
   process.env['JWT_SECRET'] = 'integration-test-secret-minimum-32-chars!!';
 
-  // Run migrations against the live container before any tests run
-  execSync('npx prisma migrate deploy --schema prisma/schema.prisma', {
-    cwd: process.cwd(),
+  // Apply schema to the live container before any tests run.
+  // db push is used instead of migrate deploy so that it works even when
+  // the Prisma migration history table isn't pre-seeded, and avoids
+  // interactive prompts. stdio:'inherit' surfaces errors in CI logs.
+  execSync('npx prisma db push --skip-generate --accept-data-loss', {
+    cwd: apiRoot,
     env: { ...process.env, DATABASE_URL: url },
-    stdio: 'pipe',
+    stdio: 'inherit',
   });
 }
 
