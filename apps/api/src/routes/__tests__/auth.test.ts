@@ -20,7 +20,7 @@ const mockBcrypt = { hash: vi.fn(), compare: vi.fn() };
 vi.mock('bcrypt', () => ({ default: mockBcrypt }));
 
 const mockPrisma = {
-  user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), create: vi.fn() },
+  user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), create: vi.fn(), update: vi.fn() },
   organization: { findUnique: vi.fn(), create: vi.fn() },
   organizationMember: { findMany: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
@@ -535,5 +535,252 @@ describe('GET /api/auth/me', () => {
     expect(res.status).toBe(200);
     expect(res.body.id).toBe('user-1');
     expect(res.body.email).toBe('test@example.com');
+  });
+});
+
+// ── POST /change-password ────────────────────────────────────────────────────
+
+describe('POST /api/auth/change-password', () => {
+  it('returns 400 when body is invalid (missing fields)', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/change-password')
+      .set('Authorization', 'Bearer any-token')
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid input');
+  });
+
+  it('returns 400 when newPassword is too short', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/change-password')
+      .set('Authorization', 'Bearer any-token')
+      .send({ currentPassword: 'OldPassword1!', newPassword: 'Short1!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 when current password is wrong', async () => {
+    mockPrisma.user.findUniqueOrThrow.mockResolvedValue({ id: 'user-1', passwordHash: 'hashed' });
+    mockBcrypt.compare.mockResolvedValue(false);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/change-password')
+      .set('Authorization', 'Bearer any-token')
+      .send({ currentPassword: 'WrongPassword1!', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Current password is incorrect');
+  });
+
+  it('returns 200 on success, revokes sessions, and clears cookie', async () => {
+    mockPrisma.user.findUniqueOrThrow.mockResolvedValue({ id: 'user-1', passwordHash: 'hashed' });
+    mockBcrypt.compare.mockResolvedValue(true);
+    mockBcrypt.hash.mockResolvedValue('new-hashed');
+    mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.$transaction.mockResolvedValue([{}]);
+
+    const { revokeAllUserSessions } = await import('../../lib/session.js');
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/change-password')
+      .set('Authorization', 'Bearer any-token')
+      .send({ currentPassword: 'OldPassword1!', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(revokeAllUserSessions).toHaveBeenCalledWith('user-1');
+  });
+});
+
+// ── POST /resend-verification ────────────────────────────────────────────────
+
+describe('POST /api/auth/resend-verification', () => {
+  it('returns 400 when email is invalid', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'not-an-email' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid email address');
+  });
+
+  it('returns 200 even when user does not exist (no leak)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'nobody@example.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 200 when user is already verified (no leak)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@b.com', firstName: 'A', emailVerifiedAt: new Date(), verifyTokenExp: null,
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 429 when rate-limited (sent too recently)', async () => {
+    // verifyTokenExp set to now + 24h means it was just sent
+    const recentExp = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@b.com', firstName: 'A', emailVerifiedAt: null, verifyTokenExp: recentExp,
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(429);
+  });
+
+  it('returns 200 and sends email when enough time has passed', async () => {
+    // verifyTokenExp set far in the past means it was sent long ago
+    const oldExp = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@b.com', firstName: 'A', emailVerifiedAt: null, verifyTokenExp: oldExp,
+    });
+    mockPrisma.user.update = vi.fn().mockResolvedValue({});
+    const { sendEmail } = await import('../../services/email.service.js');
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(sendEmail).toHaveBeenCalled();
+  });
+});
+
+// ── POST /forgot-password ────────────────────────────────────────────────────
+
+describe('POST /api/auth/forgot-password', () => {
+  it('returns 200 even when user does not exist (no leak)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/forgot-password')
+      .send({ email: 'nobody@example.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 200 and sends email when user exists', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@b.com', firstName: 'A' });
+    mockPrisma.user.update = vi.fn().mockResolvedValue({});
+    const { sendEmail } = await import('../../services/email.service.js');
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/forgot-password')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(sendEmail).toHaveBeenCalled();
+  });
+
+  it('returns 400 for invalid email format', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/forgot-password')
+      .send({ email: 'not-an-email' });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── POST /reset-password ─────────────────────────────────────────────────────
+
+describe('POST /api/auth/reset-password', () => {
+  it('returns 400 when body is invalid (missing token)', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/reset-password')
+      .send({ newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid input');
+  });
+
+  it('returns 400 when newPassword does not meet requirements', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/reset-password')
+      .send({ token: 'some-token', newPassword: 'short' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when token is expired or invalid', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u1',
+      resetTokenExp: new Date(Date.now() - 3600 * 1000), // expired
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/reset-password')
+      .send({ token: 'expired-token-value', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid or expired/i);
+  });
+
+  it('returns 400 when token does not match any user', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/reset-password')
+      .send({ token: 'nonexistent-token', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid or expired/i);
+  });
+
+  it('returns 200 on success and revokes all sessions', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u1',
+      resetTokenExp: new Date(Date.now() + 3600 * 1000), // valid
+    });
+    mockBcrypt.hash.mockResolvedValue('new-hashed');
+    mockPrisma.user.update = vi.fn().mockResolvedValue({});
+
+    const { revokeAllUserSessions } = await import('../../lib/session.js');
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/reset-password')
+      .send({ token: 'valid-token', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(revokeAllUserSessions).toHaveBeenCalledWith('u1');
+  });
+});
+
+// ── POST /logout ─────────────────────────────────────────────────────────────
+
+describe('POST /api/auth/logout', () => {
+  it('returns ok when called with a Bearer token', async () => {
+    const app = buildApp();
+    const token = jwt.sign({ sub: 'u1', jti: 'jti-1', exp: Math.floor(Date.now() / 1000) + 3600 }, 'test-secret-key-for-testing');
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns ok when called with a refresh cookie', async () => {
+    const { deleteSession } = await import('../../lib/session.js');
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Cookie', 'cc_rt=some-refresh-token');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(deleteSession).toHaveBeenCalledWith('some-refresh-token');
+  });
+
+  it('returns ok even when called without any token', async () => {
+    const app = buildApp();
+    const res = await request(app).post('/auth/logout');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
   });
 });

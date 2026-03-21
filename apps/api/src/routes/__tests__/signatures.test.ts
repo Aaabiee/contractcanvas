@@ -301,6 +301,217 @@ describe('POST /webhook/:provider', () => {
   });
 });
 
+describe('POST /api/signatures — sender as recipient', () => {
+  it('returns 400 when sender email matches a recipient', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'clxxxxxxxxxxxxxxxxxxxx', title: 'NDA' });
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', organizationId: 'org-1', email: 'a@b.com' };
+      next();
+    });
+    app.use('/', router);
+    app.use('/webhook', signatureWebhookRouter);
+    const res = await request(app)
+      .post('/')
+      .send({
+        contractId: 'clxxxxxxxxxxxxxxxxxxxx',
+        provider: 'docusign',
+        recipients: [{ email: 'a@b.com', name: 'Alice', role: 'signer' }],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/segregation/i);
+  });
+});
+
+describe('POST /api/signatures/:id/void — additional statuses', () => {
+  it('returns 409 when envelope already voided', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue({
+      id: 'env-1', status: 'VOIDED', provider: 'docusign', providerId: 'p1',
+    });
+    const app = buildApp();
+    const res = await request(app).post('/env-1/void').send({ reason: 'test' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/VOIDED/);
+  });
+
+  it('returns 409 when envelope is declined', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue({
+      id: 'env-1', status: 'DECLINED', provider: 'docusign', providerId: 'p1',
+    });
+    const app = buildApp();
+    const res = await request(app).post('/env-1/void').send({ reason: 'test' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/DECLINED/);
+  });
+});
+
+describe('POST /api/signatures/:id/resend — additional statuses', () => {
+  it('returns 409 when envelope is voided', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue({
+      id: 'env-1', status: 'VOIDED', provider: 'docusign', providerId: 'p1',
+      recipients: [], contract: { title: 'NDA' },
+    });
+    const app = buildApp();
+    const res = await request(app).post('/env-1/resend');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/VOIDED/);
+  });
+
+  it('returns 409 when envelope is declined', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue({
+      id: 'env-1', status: 'DECLINED', provider: 'docusign', providerId: 'p1',
+      recipients: [], contract: { title: 'NDA' },
+    });
+    const app = buildApp();
+    const res = await request(app).post('/env-1/resend');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/DECLINED/);
+  });
+});
+
+describe('POST /webhook/:provider — COMPLETED event updates contract', () => {
+  it('updates contract status to EXECUTED on COMPLETED webhook', async () => {
+    const envelope = {
+      id: 'env-1', provider: 'docusign', providerId: 'ds_123',
+      status: 'SENT', contractId: 'c1', metadata: {},
+    };
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue(envelope);
+    mockPrisma.signatureEnvelope.update.mockResolvedValue({ ...envelope, status: 'COMPLETED' });
+    mockPrisma.contract.update.mockResolvedValue({ id: 'c1', status: 'EXECUTED' });
+
+    const app = buildApp();
+    const res = await request(app).post('/webhook/docusign').send({
+      event: 'completed',
+      data: { envelopeId: 'ds_123' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(mockPrisma.contract.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { status: 'EXECUTED' },
+    });
+  });
+
+  it('handles contract update failure gracefully on COMPLETED webhook', async () => {
+    const envelope = {
+      id: 'env-1', provider: 'docusign', providerId: 'ds_456',
+      status: 'SENT', contractId: 'c2', metadata: {},
+    };
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue(envelope);
+    mockPrisma.signatureEnvelope.update.mockResolvedValue({ ...envelope, status: 'COMPLETED' });
+    mockPrisma.contract.update.mockRejectedValue(new Error('contract update failed'));
+
+    const app = buildApp();
+    const res = await request(app).post('/webhook/docusign').send({
+      event: 'completed',
+      data: { envelopeId: 'ds_456' },
+    });
+    // Should still return 200 because the contract.update error is caught
+    expect(res.status).toBe(200);
+  });
+
+  it('includes completedAt in metadata on COMPLETED event', async () => {
+    const envelope = {
+      id: 'env-1', provider: 'docusign', providerId: 'ds_789',
+      status: 'SENT', contractId: 'c3', metadata: { signingUrl: 'https://sign.url' },
+    };
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue(envelope);
+    mockPrisma.signatureEnvelope.update.mockResolvedValue({ ...envelope, status: 'COMPLETED' });
+    mockPrisma.contract.update.mockResolvedValue({});
+
+    const app = buildApp();
+    await request(app).post('/webhook/docusign').send({
+      event: 'completed',
+      data: { envelopeId: 'ds_789' },
+    });
+
+    expect(mockPrisma.signatureEnvelope.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'COMPLETED',
+          metadata: expect.objectContaining({
+            signingUrl: 'https://sign.url',
+            completedAt: expect.any(String),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('handles hellosign webhook with recipient signatures', async () => {
+    const envelope = {
+      id: 'env-2', provider: 'hellosign', providerId: 'hs_999',
+      status: 'SENT', contractId: 'c4', metadata: {},
+    };
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue(envelope);
+    mockPrisma.signatureEnvelope.update.mockResolvedValue({ ...envelope, status: 'SIGNED' });
+
+    const app = buildApp();
+    const res = await request(app).post('/webhook/hellosign').send({
+      event: { event_type: 'signature_request_signed' },
+      signature_request: {
+        signature_request_id: 'hs_999',
+        signatures: [
+          { signer_email_address: 'a@b.com', status_code: 'signed', signed_at: '2026-01-01T00:00:00Z' },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(mockPrisma.signatureEnvelope.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recipients: [
+            { email: 'a@b.com', status: 'signed', signedAt: '2026-01-01T00:00:00Z' },
+          ],
+        }),
+      }),
+    );
+  });
+});
+
+describe('error propagation — void and resend', () => {
+  it('POST /:id/void propagates provider errors', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue({
+      id: 'env-1', status: 'SENT', provider: 'docusign', providerId: 'p1',
+    });
+    const { getProvider } = await import('../../services/signature-provider.js');
+    (getProvider as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      voidEnvelope: vi.fn().mockRejectedValue(new Error('provider error')),
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: 'org-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+
+    const res = await request(app).post('/env-1/void').send({ reason: 'test' });
+    expect(res.status).toBe(500);
+  });
+
+  it('POST /:id/resend propagates provider errors', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockResolvedValue({
+      id: 'env-1', status: 'SENT', provider: 'docusign', providerId: 'p1',
+      recipients: [{ email: 'a@b.com', name: 'A', role: 'signer' }],
+      contract: { title: 'NDA' },
+    });
+    const { getProvider } = await import('../../services/signature-provider.js');
+    (getProvider as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      createEnvelope: vi.fn().mockRejectedValue(new Error('resend failed')),
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1', organizationId: 'org-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+
+    const res = await request(app).post('/env-1/resend');
+    expect(res.status).toBe(500);
+  });
+});
+
 describe('error propagation via next(err)', () => {
   function buildWithErrHandler(orgId = 'org-1') {
     const app = express();

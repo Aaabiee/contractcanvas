@@ -376,3 +376,143 @@ describe('error propagation via next(err)', () => {
     expect(res.status).toBe(500);
   });
 });
+
+// ── PATCH /:id — optimistic-lock conflict (409) ─────────────────────────────
+
+describe('PATCH /api/contracts/:id — optimistic lock conflict', () => {
+  it('returns 409 when updatedAt does not match server value', async () => {
+    const serverTime = new Date('2026-01-01T00:00:00Z');
+    const clientTime = new Date('2025-12-31T00:00:00Z');
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      updatedAt: serverTime,
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .patch('/contract-1')
+      .send({ title: 'Updated', updatedAt: clientTime.toISOString() });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('conflict');
+  });
+});
+
+// ── PATCH /:id — invalid status transition (422) ────────────────────────────
+
+describe('PATCH /api/contracts/:id — invalid status transition', () => {
+  it('returns 422 when transitioning from EXECUTED to DRAFT', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      status: 'EXECUTED',
+      updatedAt: new Date(),
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .patch('/contract-1')
+      .send({ status: 'DRAFT' });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_transition');
+    expect(res.body.allowed).toEqual(['ARCHIVED']);
+  });
+
+  it('returns 422 when transitioning from DRAFT to EXECUTED', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      status: 'DRAFT',
+      updatedAt: new Date(),
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .patch('/contract-1')
+      .send({ status: 'EXECUTED' });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_transition');
+  });
+
+  it('allows valid transition from DRAFT to NEGOTIATION', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      status: 'DRAFT',
+      updatedAt: new Date(),
+    });
+    mockPrisma.contract.update.mockResolvedValue({ ...sampleContract, status: 'NEGOTIATION' });
+    const app = buildApp();
+    const res = await request(app)
+      .patch('/contract-1')
+      .send({ status: 'NEGOTIATION' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('NEGOTIATION');
+  });
+});
+
+// ── POST /:id/generate-pdf ──────────────────────────────────────────────────
+
+vi.mock('../../services/pdf.service.js', () => ({
+  generateContractPdf: vi.fn(),
+}));
+vi.mock('../billing.js', () => ({
+  requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
+}));
+
+describe('POST /api/contracts/:id/generate-pdf', () => {
+  // Re-import router with new mocks
+  let pdfRouter: typeof router;
+  let mockGeneratePdf: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const pdfMod = await import('../../services/pdf.service.js');
+    mockGeneratePdf = pdfMod.generateContractPdf as ReturnType<typeof vi.fn>;
+    // The router is already imported at module level and uses the mocked modules
+    pdfRouter = router;
+  });
+
+  function buildPdfApp(orgId = 'org-1', userId = 'user-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).user = { id: userId, organizationId: orgId };
+      next();
+    });
+    app.use('/', pdfRouter);
+    return app;
+  }
+
+  function buildPdfAppNoOrg() {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).user = { id: 'user-1' };
+      next();
+    });
+    app.use('/', pdfRouter);
+    return app;
+  }
+
+  it('returns 403 when no active organization', async () => {
+    const app = buildPdfAppNoOrg();
+    const res = await request(app).post('/contract-1/generate-pdf');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 when contract not found', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue(null);
+    const app = buildPdfApp();
+    const res = await request(app).post('/contract-999/generate-pdf');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns PDF buffer on success', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      organization: { name: 'Acme' },
+      currentVersion: { number: 1, title: 'Draft' },
+    });
+    const pdfBuf = Buffer.from('%PDF-1.4 mock');
+    mockGeneratePdf.mockResolvedValue(pdfBuf);
+
+    const app = buildPdfApp();
+    const res = await request(app).post('/contract-1/generate-pdf');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/pdf/);
+    expect(res.headers['content-disposition']).toMatch(/attachment/);
+  });
+});

@@ -340,3 +340,61 @@ describe('requireRole middleware factory', () => {
     expect(statusFn).toHaveBeenCalledWith(403);
   });
 });
+
+// ── requireEmailVerified middleware ──────────────────────────────────────────
+
+describe('requireEmailVerified middleware', () => {
+  let requireEmailVerified: typeof import('../auth.js')['requireEmailVerified'];
+
+  beforeEach(async () => {
+    const mod = await import('../auth.js');
+    requireEmailVerified = mod.requireEmailVerified;
+  });
+
+  it('returns 401 when req.user is not set', () => {
+    const req = makeReq();
+    const { res, statusFn, jsonFn } = makeRes();
+    const next = makeNext();
+
+    requireEmailVerified(req, res, next);
+
+    expect(statusFn).toHaveBeenCalledWith(401);
+    expect(jsonFn).toHaveBeenCalledWith(expect.objectContaining({ error: 'unauthorized' }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when emailVerified is false', () => {
+    const req = makeReq();
+    req.user = { id: 'u1', emailVerified: false };
+    const { res, statusFn, jsonFn } = makeRes();
+    const next = makeNext();
+
+    requireEmailVerified(req, res, next);
+
+    expect(statusFn).toHaveBeenCalledWith(403);
+    expect(jsonFn).toHaveBeenCalledWith(expect.objectContaining({ error: 'email_not_verified' }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('calls next when emailVerified is true', () => {
+    const req = makeReq();
+    req.user = { id: 'u1', emailVerified: true };
+    const { res } = makeRes();
+    const next = makeNext();
+
+    requireEmailVerified(req, res, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it('calls next when emailVerified is undefined (not set)', () => {
+    const req = makeReq();
+    req.user = { id: 'u1' };
+    const { res } = makeRes();
+    const next = makeNext();
+
+    requireEmailVerified(req, res, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+});

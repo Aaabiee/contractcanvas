@@ -46,7 +46,14 @@ function buildAppNoOrg() {
   return app;
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Reset all mock implementations (clearAllMocks only clears calls/results, not implementations)
+  mockPrisma.matter.findMany.mockReset();
+  mockPrisma.contract.findMany.mockReset();
+  mockPrisma.document.findMany.mockReset();
+  mockPrisma.$queryRaw.mockReset();
+});
 
 describe('GET /api/search', () => {
   it('returns 403 when no active organization', async () => {
@@ -128,5 +135,57 @@ describe('GET /api/search', () => {
 
     const res = await request(app).get('/?q=test&mode=like');
     expect(res.status).toBe(500);
+  });
+});
+
+describe('GET /api/search — FTS mode', () => {
+  it('uses FTS when hasTsvector returns true and mode=fts', async () => {
+    // The first $queryRaw call checks for tsvector column existence
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ '1': 1 }]);
+    // The next three $queryRaw calls are the FTS queries
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ id: 'm1', title: 'FTS Matter', description: 'desc', status: 'OPEN', createdAt: new Date() }]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ id: 'c1', title: 'FTS Contract', status: 'DRAFT', matterId: 'm1', createdAt: new Date() }]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+
+    const res = await request(buildApp()).get('/?q=test&mode=fts');
+    expect(res.status).toBe(200);
+    expect(res.body.matters).toHaveLength(1);
+    expect(res.body.contracts).toHaveLength(1);
+    expect(res.body.documents).toHaveLength(0);
+    expect(res.body.total).toBe(2);
+  });
+
+  it('returns empty results when query becomes empty after special char stripping (FTS)', async () => {
+    // hasTsvector is already cached as true from previous test
+    const res = await request(buildApp()).get('/?q=!!!&mode=fts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.matters).toHaveLength(0);
+    expect(res.body.contracts).toHaveLength(0);
+    expect(res.body.documents).toHaveLength(0);
+  });
+
+  it('uses FTS with multi-word query (toTsQuery joins with &)', async () => {
+    // useFts is cached as true from first FTS test
+    // Set up 3 $queryRaw calls for the FTS queries
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ id: 'm1', title: 'Test Matter', description: 'd', status: 'OPEN', createdAt: new Date() }]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+
+    const res = await request(buildApp()).get('/?q=hello%20world&mode=fts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+  });
+
+  it('defaults to fts mode when mode param not specified', async () => {
+    // useFts is cached as true
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+
+    const res = await request(buildApp()).get('/?q=test');
+    expect(res.status).toBe(200);
+    // Should use FTS path (no findMany calls on prisma models)
+    expect(mockPrisma.matter.findMany).not.toHaveBeenCalled();
   });
 });

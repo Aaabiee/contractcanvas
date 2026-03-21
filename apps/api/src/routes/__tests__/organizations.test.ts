@@ -399,3 +399,80 @@ describe('DELETE /api/organizations/:orgId/members/:memberId', () => {
     expect(mockRevokeAllUserSessions).toHaveBeenCalledWith('user-2');
   });
 });
+
+// ── POST /:orgId/transfer-ownership ──────────────────────────────────────────
+
+describe('POST /api/organizations/:orgId/transfer-ownership', () => {
+  it('returns 403 when requester is not the owner', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ id: 'm1', role: 'ADMIN' });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/owner/i);
+  });
+
+  it('returns 403 when requester is not a member at all', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue(null);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when trying to transfer to self', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ id: 'm1', role: 'OWNER' });
+    // Use a cuid-format ID that matches the requesting user
+    const cuidUserId = 'clxxxxxxxxxxxxxxxxxxxx';
+    const app = buildApp(cuidUserId);
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: cuidUserId });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/yourself/i);
+  });
+
+  it('returns 404 when target user is not a member', async () => {
+    mockPrisma.organizationMember.findUnique
+      .mockResolvedValueOnce({ id: 'm1', role: 'OWNER' }) // requester lookup
+      .mockResolvedValueOnce(null); // target lookup
+    const app = buildApp('user-1');
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not a member/i);
+  });
+
+  it('returns 200 on success and transfers ownership', async () => {
+    mockPrisma.organizationMember.findUnique
+      .mockResolvedValueOnce({ id: 'm1', role: 'OWNER' }) // requester
+      .mockResolvedValueOnce({ id: 'm2' }); // target
+    mockPrisma.$transaction.mockResolvedValue([{}, {}]);
+    const app = buildApp('user-1');
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 401 when user is not authenticated', async () => {
+    const app = buildAppNoUser();
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 400 for invalid newOwnerUserId', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ id: 'm1', role: 'OWNER' });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'not-a-cuid' });
+    expect(res.status).toBe(400);
+  });
+});

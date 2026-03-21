@@ -142,3 +142,73 @@ describe('validateProductionConfig — S3_ENDPOINT (LocalStack detection)', () =
     ).not.toThrow();
   });
 });
+
+// ── JWT_SECRET warning path (short secret) ───────────────────────────────────
+
+describe('validateProductionConfig — combined error paths', () => {
+  it('throws for short JWT_SECRET in production', () => {
+    expect(() =>
+      validateProductionConfig({
+        env:             'production',
+        jwtSecret:       'a'.repeat(32),
+        stripeSecretKey: 'sk_live_realkey1234567890',
+        s3Endpoint:      undefined,
+      }),
+    ).toThrow(/64 characters/);
+  });
+
+  it('throws for placeholder Stripe key in production', () => {
+    expect(() =>
+      validateProductionConfig({
+        env:             'production',
+        jwtSecret:       'a'.repeat(64),
+        stripeSecretKey: 'REPLACE_ME_with_real_key',
+        s3Endpoint:      undefined,
+      }),
+    ).toThrow(/STRIPE_SECRET_KEY/);
+  });
+
+  it('throws for CHANGE prefix Stripe key in production', () => {
+    expect(() =>
+      validateProductionConfig({
+        env:             'production',
+        jwtSecret:       'a'.repeat(64),
+        stripeSecretKey: 'CHANGE_this_key',
+        s3Endpoint:      undefined,
+      }),
+    ).toThrow(/STRIPE_SECRET_KEY/);
+  });
+
+  it('throws for YOUR_ prefix Stripe key in production', () => {
+    expect(() =>
+      validateProductionConfig({
+        env:             'production',
+        jwtSecret:       'a'.repeat(64),
+        stripeSecretKey: 'YOUR_stripe_key_here',
+        s3Endpoint:      undefined,
+      }),
+    ).toThrow(/STRIPE_SECRET_KEY/);
+  });
+
+  it('throws for S3_ENDPOINT set in production', () => {
+    expect(() =>
+      validateProductionConfig({
+        env:             'production',
+        jwtSecret:       'a'.repeat(64),
+        stripeSecretKey: 'sk_live_realkey1234567890',
+        s3Endpoint:      'http://localstack:4566',
+      }),
+    ).toThrow(/S3_ENDPOINT/);
+  });
+
+  it('passes when all production requirements are met', () => {
+    expect(() =>
+      validateProductionConfig({
+        env:             'production',
+        jwtSecret:       'a'.repeat(128),
+        stripeSecretKey: 'sk_live_aaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        s3Endpoint:      undefined,
+      }),
+    ).not.toThrow();
+  });
+});
