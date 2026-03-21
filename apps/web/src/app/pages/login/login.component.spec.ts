@@ -1,4 +1,3 @@
-// apps/web/src/app/pages/login/login.component.spec.ts
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';
@@ -7,16 +6,12 @@ import { of, throwError } from 'rxjs';
 import { LoginComponent } from './login.component';
 import { AuthService } from '../../services/auth.service';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-
-// --- Import required Material Modules for testing ---
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-// ----------------------------------------------------
 
-// Create a mock AuthService
 class MockAuthService {
   login(credentials: any) {
     if (credentials.email === 'test@example.com' && credentials.password === 'password') {
@@ -36,10 +31,9 @@ describe('LoginComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [
-        LoginComponent, // Standalone component
+        LoginComponent,
         FormsModule,
-        NoopAnimationsModule, // <-- Add this for animations
-        // --- Add Material Modules ---
+        NoopAnimationsModule,
         MatCardModule,
         MatFormFieldModule,
         MatInputModule,
@@ -64,7 +58,6 @@ describe('LoginComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  // Tests from previous file are still valid
   it('should navigate to dashboard on successful login', () => {
     const navigateSpy = jest.spyOn(router, 'navigate');
     component.email = 'test@example.com';
