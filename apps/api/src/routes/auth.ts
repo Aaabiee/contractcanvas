@@ -17,8 +17,6 @@ import type { Prisma } from '@prisma/client';
 
 export const router = Router();
 
-// ── helpers ────────────────────────────────────────────────────────────────
-
 const slugify = (s: string) =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -34,10 +32,6 @@ const toPrismaRole = (r?: string): RoleType => {
 
 type KnownUser = { id: string; email: string; role: any };
 
-/**
- * Build the JWT payload from a user + their org memberships.
- * Pass `knownUser` to skip the DB lookup when the user object is already in scope.
- */
 async function buildTokenPayload(userId: string, knownUser?: KnownUser) {
   const [user, memberships] = await Promise.all([
     knownUser
@@ -63,22 +57,17 @@ async function buildTokenPayload(userId: string, knownUser?: KnownUser) {
   return { sub: user.id, email: user.email, role: user.role, organizations };
 }
 
-/** Sign a short-lived access JWT (15 min). */
 function signAccessToken(payload: object): string {
   return jwt.sign(payload, jwtConfig.secret, { expiresIn: '15m' });
 }
 
-/** Set the httpOnly refresh-token cookie on the response. */
 function setRefreshCookie(res: Response, raw: string): void {
   res.cookie(REFRESH_COOKIE, raw, REFRESH_COOKIE_OPTS);
 }
 
-/** Clear the refresh-token cookie (logout). */
 function clearRefreshCookie(res: Response): void {
   res.clearCookie(REFRESH_COOKIE, { ...REFRESH_COOKIE_OPTS, maxAge: 0 });
 }
-
-// ── schemas ────────────────────────────────────────────────────────────────
 
 const OrgModeEnum = z.enum(['create', 'join']);
 
@@ -146,8 +135,6 @@ const ChangePasswordSchema = z.object({
     .regex(/[0-9]/,        { message: 'New password must contain at least one number' })
     .regex(/[^A-Za-z0-9]/, { message: 'New password must contain at least one special character' }),
 });
-
-// ── routes ─────────────────────────────────────────────────────────────────
 
 router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -227,7 +214,6 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       );
       token = signAccessToken(payload);
 
-      // Issue refresh token cookie
       const rawRefresh = await createSession(result.user.id, req.ip, req.headers['user-agent']);
       setRefreshCookie(res, rawRefresh);
     }
@@ -275,7 +261,6 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const payload = await buildTokenPayload(user.id, { id: user.id, email: user.email, role: user.role });
     const token   = signAccessToken(payload);
 
-    // Issue refresh token in httpOnly cookie
     const rawRefresh = await createSession(user.id, req.ip, req.headers['user-agent']);
     setRefreshCookie(res, rawRefresh);
 
@@ -296,12 +281,6 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-/**
- * POST /api/auth/refresh-token
- * Reads the httpOnly refresh cookie, validates + rotates it,
- * issues a new 15-min access JWT and a new refresh cookie.
- * No Authorization header required.
- */
 router.post('/refresh-token', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const rawToken = req.cookies?.[REFRESH_COOKIE];
@@ -325,17 +304,10 @@ router.post('/refresh-token', async (req: Request, res: Response, next: NextFunc
   }
 });
 
-/**
- * POST /api/auth/logout
- * Deletes the server-side session and clears the cookie.
- * Works whether or not an access token is still valid.
- */
 router.post('/logout', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const rawToken = req.cookies?.[REFRESH_COOKIE];
-    if (rawToken) {
-      await deleteSession(rawToken);
-    }
+    if (rawToken) await deleteSession(rawToken);
     clearRefreshCookie(res);
     res.json({ ok: true });
   } catch (err) {
@@ -343,19 +315,11 @@ router.post('/logout', async (req: Request, res: Response, next: NextFunction) =
   }
 });
 
-/**
- * GET /api/auth/me
- * Returns the current user's profile from the DB (not just the token claims).
- */
 router.get('/me', protect, (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: 'User not found in request' });
   res.json(req.user);
 });
 
-/**
- * POST /api/auth/change-password
- * Requires current password. On success rotates all sessions (forced re-login).
- */
 router.post('/change-password', protect, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = ChangePasswordSchema.safeParse(req.body);
@@ -377,7 +341,6 @@ router.post('/change-password', protect, async (req: Request, res: Response, nex
       prisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } }),
     ]);
 
-    // Revoke all sessions — user must re-login on all devices
     await revokeAllUserSessions(userId);
     clearRefreshCookie(res);
 

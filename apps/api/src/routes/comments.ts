@@ -71,9 +71,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const v = CreateCommentSchema.safeParse(req.body);
     if (!v.success) return res.status(400).json({ error: 'Invalid input', details: v.error.flatten() });
 
-    // IDOR guard: verify the referenced resource belongs to this org before
-    // creating the comment.  Without this check a user could attach comments
-    // to resources owned by other tenants.
     if (v.data.matterId) {
       const matter = await prisma.matter.findFirst({
         where: { id: v.data.matterId, organizationId, deletedAt: null },

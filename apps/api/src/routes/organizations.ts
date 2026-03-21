@@ -122,14 +122,12 @@ router.get(
       }
       const { orgId } = req.params;
 
-      const requestingUserMembership = await prisma.organizationMember.findUnique(
-        {
-          where: {
-            organizationId_userId: { organizationId: orgId, userId: req.user.id },
-          },
-          select: { role: true },
-        }
-      );
+      const requestingUserMembership = await prisma.organizationMember.findUnique({
+        where: {
+          organizationId_userId: { organizationId: orgId, userId: req.user.id },
+        },
+        select: { role: true },
+      });
       if (!requestingUserMembership) {
         return res.status(403).json({
           error: 'Forbidden: You are not a member of this organization',
@@ -293,9 +291,8 @@ router.delete(
         select: { role: true },
       });
 
-      const isSelf = memberToRemove.userId === removerUserId;
-      const canAdmin =
-        removerMembership && ['OWNER', 'ADMIN'].includes(removerMembership.role);
+      const isSelf  = memberToRemove.userId === removerUserId;
+      const canAdmin = removerMembership && ['OWNER', 'ADMIN'].includes(removerMembership.role);
 
       if (!isSelf && !canAdmin) {
         return res.status(403).json({
@@ -307,7 +304,6 @@ router.delete(
         where: { id: memberId, organizationId: orgId },
       });
 
-      // Force the removed user off all active sessions.
       await revokeAllUserSessions(memberToRemove.userId);
 
       res.status(204).send();

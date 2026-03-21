@@ -61,28 +61,27 @@ router.post('/invoice', protect, isStripeActive, async (req: Request, res: Respo
 
 const WH_SECRET = stripeConfig.webhookSecret ?? '';
 router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {
-    if (!stripe || !WH_SECRET || WH_SECRET.includes('YOUR_')) {
-      return res.status(501).json({ error: 'Webhook secret not configured' });
+  if (!stripe || !WH_SECRET || WH_SECRET.includes('YOUR_')) {
+    return res.status(501).json({ error: 'Webhook secret not configured' });
+  }
+
+  try {
+    const sig = req.headers['stripe-signature'];
+    if (!sig) return res.status(400).json({ error: 'Missing stripe-signature header' });
+
+    const event = stripe.webhooks.constructEvent(req.body, String(sig), WH_SECRET);
+
+    switch (event.type) {
+      case 'payment_intent.succeeded': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        console.log(`[billing] payment_intent.succeeded: ${paymentIntent.id}`);
+        break;
+      }
     }
-
-    try {
-        const sig = req.headers['stripe-signature'];
-        if (!sig) return res.status(400).json({ error: 'Missing stripe-signature header' });
-
-        const event = stripe.webhooks.constructEvent(req.body, String(sig), WH_SECRET);
-        console.log(`[Stripe Webhook] Received event: ${event.type}`);
-
-        switch (event.type) {
-            case 'payment_intent.succeeded':
-                const paymentIntent = event.data.object as Stripe.PaymentIntent;
-                console.log(`PaymentIntent ${paymentIntent.id} succeeded.`);
-                break;
-        }
-        res.json({ received: true });
-    } catch (err: any) {
-        console.error(`[Stripe Webhook Error] ${err.message}`);
-        return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
+    res.json({ received: true });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'Webhook signature verification failed' });
+  }
 });
 
 export default router;

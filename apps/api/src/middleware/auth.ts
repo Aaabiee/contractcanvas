@@ -150,7 +150,6 @@ function resolveOrganizationId(req: Request, user: UserClaims): string | undefin
   if (header) {
     const match = orgs.find(o => o.id === header);
     if (match) return match.id;
-    // Header provided but doesn't match any of the user's orgs — deny in protect()
     return undefined;
   }
 

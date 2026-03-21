@@ -12,7 +12,7 @@ import { applySecurityHeaders } from './middleware/security.js';
 
 const app = express();
 
-app.set('trust proxy', 1); // trust one proxy hop (nginx / load balancer)
+app.set('trust proxy', 1);
 applySecurityHeaders(app);
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:4200')
@@ -34,25 +34,25 @@ app.use(morgan('dev'));
 app.use(cookieParser());
 
 const authLimiter = rateLimit({
-  windowMs:         15 * 60 * 1000,
-  max:              20,
-  standardHeaders:  true,
-  legacyHeaders:    false,
-  message:          { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
+  windowMs:        15 * 60 * 1000,
+  max:             20,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
 const apiLimiter = rateLimit({
-  windowMs:         15 * 60 * 1000,
-  max:              300,
-  standardHeaders:  true,
-  legacyHeaders:    false,
-  message:          { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
+  windowMs:        15 * 60 * 1000,
+  max:             300,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
 app.use('/api/', apiLimiter);
 app.use('/api/billing', billing);
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/auth', authLimiter, auth);
 

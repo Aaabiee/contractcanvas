@@ -94,7 +94,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const matter = await prisma.matter.findFirst({ where: { id: matterId, organizationId, deletedAt: null } });
     if (!matter) return res.status(404).json({ error: 'Matter not found' });
 
-    // IDOR guard: assignee must be a member of this org.
     if (assigneeId) {
       const member = await prisma.organizationMember.findFirst({
         where: { userId: assigneeId, organizationId },
@@ -134,7 +133,6 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
     const existing = await prisma.task.findFirst({ where: { id: req.params.id, organizationId } });
     if (!existing) return res.status(404).json({ error: 'Task not found' });
 
-    // IDOR guard: assignee must be a member of this org.
     if (v.data.assigneeId) {
       const member = await prisma.organizationMember.findFirst({
         where: { userId: v.data.assigneeId, organizationId },
@@ -147,7 +145,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
       where: { id: req.params.id },
       data: {
         ...rest,
-        ...(dueAt !== undefined     ? { dueAt:      dueAt      ? new Date(dueAt)      : null } : {}),
+        ...(dueAt !== undefined       ? { dueAt:       dueAt       ? new Date(dueAt)       : null } : {}),
         ...(completedAt !== undefined ? { completedAt: completedAt ? new Date(completedAt) : null } : {}),
       },
       include: {
