@@ -25,6 +25,7 @@ import { router as documentsRouter }      from '../../routes/documents.js';
 import { router as billingRouter }        from '../../routes/billing.js';
 import searchRouter                        from '../../routes/search.js';
 import remindersRouter                     from '../../routes/reminders.js';
+import { router as shareLinksRouter, shareTokenRouter } from '../../routes/share-links.js';
 import { PrismaClient }                   from '@prisma/client';
 
 export function buildApp(): Express {
@@ -42,7 +43,9 @@ export function buildApp(): Express {
   // billing: /invoice has protect inline; /webhooks/stripe is intentionally public
   app.use('/api/billing', billingRouter);
   app.use('/api/search',     protect, searchRouter);
-  app.use('/api/reminders',  protect, remindersRouter);
+  app.use('/api/reminders',   protect, remindersRouter);
+  app.use('/api/share-links', shareLinksRouter);
+  app.use('/api/share',       shareTokenRouter);
   return app;
 }
 

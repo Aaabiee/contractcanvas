@@ -12,3 +12,4 @@ export { default as notifications } from './notifications.js';
 export { default as clauses } from './clauses.js';
 export { default as search } from './search.js';
 export { default as reminders } from './reminders.js';
+export { router as shareLinks, shareTokenRouter } from './share-links.js';
