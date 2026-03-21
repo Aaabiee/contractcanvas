@@ -18,6 +18,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { CommentService, Comment } from '../../services/comment.service';
 import { AuthService } from '../../services/auth.service';
+import { SafeHtmlPipe } from '../../pipes/safe-html.pipe';
 
 @Component({
   selector: 'app-comments',
@@ -32,6 +33,7 @@ import { AuthService } from '../../services/auth.service';
     MatInputModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    SafeHtmlPipe,
   ],
   template: `
     <div class="comments-container">
@@ -53,7 +55,7 @@ import { AuthService } from '../../services/auth.service';
           </div>
 
           <ng-container *ngIf="editingId() !== c.id">
-            <p class="comment-body">{{ c.bodyMd }}</p>
+            <div class="comment-body" [innerHTML]="c.bodyMd | safeHtml"></div>
             <div *ngIf="c.authorId === currentUserId()" class="comment-actions">
               <button mat-button (click)="startEdit(c)">
                 <mat-icon>edit</mat-icon> Edit
