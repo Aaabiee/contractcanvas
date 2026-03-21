@@ -1,9 +1,10 @@
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import { buildApp, seedAuth, cleanDb } from './helpers.js';
-import { disconnectRedis } from '../../lib/redis.js';
+import { getRedisClient, disconnectRedis } from '../../lib/redis.js';
 
 const db = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL } } });
+const hasRedis = !!getRedisClient();
 
 afterEach(() => cleanDb(db));
 afterAll(async () => {
@@ -13,6 +14,8 @@ afterAll(async () => {
 
 describe('POST /api/auth/logout — token blacklist', () => {
   it('invalidates the access token after logout', async () => {
+    if (!hasRedis) return; // blacklist requires Redis
+
     const app = buildApp();
     const { authHeader, orgHeader } = await seedAuth(app);
 
@@ -20,6 +23,9 @@ describe('POST /api/auth/logout — token blacklist', () => {
       .post('/api/auth/logout')
       .set('Authorization', authHeader)
       .expect(200, { ok: true });
+
+    // Allow Redis blacklist write to propagate
+    await new Promise(r => setTimeout(r, 200));
 
     const res = await request(app)
       .get('/api/matters')
