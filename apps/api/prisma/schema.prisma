@@ -472,17 +472,17 @@ model BillingProfile {
 model Invoice {
   id             String        @id @default(cuid())
   organizationId String
-  contractId     String
+  contractId     String?
   amountCents    Int
   currency       String        @default("usd")
   status         InvoiceStatus @default(DRAFT)
-  stripeId       String?       @unique // Stripe Invoice ID or PaymentIntent ID
+  stripeId       String?       @unique
   issuedAt       DateTime      @default(now())
   dueAt          DateTime?
   paidAt         DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract     Contract?    @relation(fields: [contractId], references: [id], onDelete: SetNull)
   payments     Payment[]
 
   @@index([organizationId])

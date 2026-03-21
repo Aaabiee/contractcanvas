@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { z } from 'zod';
 import { stripe as stripeConfig } from '../config.js';
 import { protect, requireEmailVerified } from '../middleware/auth.js';
+import prisma from '../prisma.js';
 
 export const router = Router();
 
@@ -26,7 +27,8 @@ if (STRIPE_KEY && !STRIPE_KEY.includes('CONTRA_')) {
 
 const CreateIntentSchema = z.object({
   amount_cents: z.number().int().positive(),
-  currency: z.string().default('usd'),
+  currency:     z.string().default('usd'),
+  contractId:   z.string().cuid().optional(),
 });
 
 const isStripeActive = (req: Request, res: Response, next: NextFunction) => {
@@ -42,15 +44,38 @@ router.post('/invoice', protect, requireEmailVerified, isStripeActive, async (re
     if (!validation.success) {
       return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
     }
-    const { amount_cents, currency } = validation.data;
+
+    const { amount_cents, currency, contractId } = validation.data;
+    const organizationId = req.user!.organizationId;
+
+    if (!organizationId) {
+      return res.status(403).json({ error: 'No active organization.' });
+    }
+
+    if (contractId) {
+      const contract = await prisma.contract.findFirst({ where: { id: contractId, organizationId } });
+      if (!contract) return res.status(404).json({ error: 'Contract not found' });
+    }
 
     const pi = await stripe!.paymentIntents.create({
-      amount: amount_cents,
+      amount:   amount_cents,
       currency,
       automatic_payment_methods: { enabled: true },
+      metadata: { organizationId, ...(contractId ? { contractId } : {}) },
     });
 
-    res.status(201).json({ client_secret: pi.client_secret });
+    const invoice = await prisma.invoice.create({
+      data: {
+        organizationId,
+        contractId:  contractId ?? null,
+        amountCents: amount_cents,
+        currency,
+        status:      'DRAFT',
+        stripeId:    pi.id,
+      },
+    });
+
+    res.status(201).json({ client_secret: pi.client_secret, invoiceId: invoice.id });
   } catch (error: any) {
     if (error && typeof error === 'object' && 'type' in error) {
       return res.status(400).json({ error: String(error.message ?? error) });
@@ -59,8 +84,25 @@ router.post('/invoice', protect, requireEmailVerified, isStripeActive, async (re
   }
 });
 
+router.get('/invoices', protect, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const organizationId = req.user!.organizationId;
+    if (!organizationId) return res.status(403).json({ error: 'No active organization.' });
+
+    const invoices = await prisma.invoice.findMany({
+      where:   { organizationId },
+      orderBy: { issuedAt: 'desc' },
+      include: { payments: true },
+    });
+
+    res.json({ data: invoices, total: invoices.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const WH_SECRET = stripeConfig.webhookSecret ?? '';
-router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {
+router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
   if (!stripe || !WH_SECRET || WH_SECRET.includes('YOUR_')) {
     return res.status(501).json({ error: 'Webhook secret not configured' });
   }
@@ -73,13 +115,51 @@ router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), (req:
 
     switch (event.type) {
       case 'payment_intent.succeeded': {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        console.log(`[billing] payment_intent.succeeded: ${paymentIntent.id}`);
+        const pi = event.data.object as Stripe.PaymentIntent;
+
+        const invoice = await prisma.invoice.findUnique({ where: { stripeId: pi.id } });
+        if (invoice) {
+          await prisma.$transaction([
+            prisma.invoice.update({
+              where: { id: invoice.id },
+              data:  { status: 'PAID', paidAt: new Date() },
+            }),
+            prisma.payment.create({
+              data: {
+                organizationId:  invoice.organizationId,
+                invoiceId:        invoice.id,
+                stripePaymentId:  pi.id,
+                amountCents:      pi.amount,
+                currency:         pi.currency,
+                status:           'SUCCEEDED',
+              },
+            }),
+          ]);
+        }
+        break;
+      }
+
+      case 'payment_intent.payment_failed': {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const invoice = await prisma.invoice.findUnique({ where: { stripeId: pi.id } });
+        if (invoice) {
+          await prisma.payment.create({
+            data: {
+              organizationId: invoice.organizationId,
+              invoiceId:       invoice.id,
+              stripePaymentId: pi.id,
+              amountCents:     pi.amount,
+              currency:        pi.currency,
+              status:          'FAILED',
+            },
+          });
+        }
         break;
       }
     }
+
     res.json({ received: true });
-  } catch (err: any) {
+  } catch {
     return res.status(400).json({ error: 'Webhook signature verification failed' });
   }
 });
