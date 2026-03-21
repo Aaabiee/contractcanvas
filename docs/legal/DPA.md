@@ -16,14 +16,14 @@ This DPA applies to the processing of personal data by ContractCanvas on behalf 
 
 ## 3. Processing Details
 
-| Attribute | Detail |
-|-----------|--------|
-| Subject matter | Contract lifecycle management platform services |
-| Duration | Term of the service agreement |
-| Nature | Storage, retrieval, display, and transmission of legal documents and user data |
-| Purpose | Providing CLM platform features as described in the Terms of Service |
-| Categories of data subjects | Controller's employees, clients, and contract counterparties |
-| Categories of personal data | Names, email addresses, IP addresses, document content, signature data |
+| Attribute                   | Detail                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| Subject matter              | Contract lifecycle management platform services                                |
+| Duration                    | Term of the service agreement                                                  |
+| Nature                      | Storage, retrieval, display, and transmission of legal documents and user data |
+| Purpose                     | Providing CLM platform features as described in the Terms of Service           |
+| Categories of data subjects | Controller's employees, clients, and contract counterparties                   |
+| Categories of personal data | Names, email addresses, IP addresses, document content, signature data         |
 
 ## 4. Processor Obligations
 
@@ -41,14 +41,14 @@ ContractCanvas shall:
 
 Current sub-processors:
 
-| Sub-processor | Purpose | Location |
-|---------------|---------|----------|
+| Sub-processor       | Purpose                          | Location     |
+| ------------------- | -------------------------------- | ------------ |
 | Amazon Web Services | Infrastructure, document storage | Configurable |
-| Stripe | Payment processing | USA |
-| DocuSign | Electronic signatures | USA |
-| HelloSign | Electronic signatures | USA |
-| Postmark | Email delivery | USA |
-| Sentry | Error monitoring | USA |
+| Stripe              | Payment processing               | USA          |
+| DocuSign            | Electronic signatures            | USA          |
+| HelloSign           | Electronic signatures            | USA          |
+| Postmark            | Email delivery                   | USA          |
+| Sentry              | Error monitoring                 | USA          |
 
 ContractCanvas will notify the Controller at least 30 days before engaging a new sub-processor. The Controller may object in writing within 14 days.
 

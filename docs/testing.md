@@ -32,6 +32,7 @@ cd apps/api && npx vitest run src/__tests__/integration/
 ```
 
 Integration tests cover:
+
 - Auth flows (register, login, refresh, logout, email verification, password reset)
 - CRUD operations (matters, contracts, tasks, comments, clauses)
 - Billing (invoices, payment intents)
@@ -43,6 +44,7 @@ Integration tests cover:
 - Reminder scheduling
 
 **Test setup** (`setup.ts`):
+
 - Spins up PostgreSQL via TestContainers
 - Runs Prisma migrations
 - Provides `seedAuth()` helper for authenticated test contexts
@@ -59,6 +61,7 @@ cd apps/web && npx jest --coverage          # with coverage
 ```
 
 **Coverage:** 44 spec files, 408 tests covering:
+
 - All page components (dashboard, matters, contracts, tasks, billing, etc.)
 - All services (auth, contract, matter, task, notification, etc.)
 - HTTP interceptors (JWT, error)
@@ -100,6 +103,7 @@ npm run test:e2e:ui       # interactive UI mode
 ```
 
 **Configuration:** `e2e/playwright.config.ts`
+
 - Browser: Chromium (headless)
 - Auto-starts API and Web servers (skipped if already running)
 - Retries: 2 in CI, 0 locally
@@ -107,16 +111,17 @@ npm run test:e2e:ui       # interactive UI mode
 
 ### Test Suites
 
-| File | Tests | Description |
-|------|-------|-------------|
-| `auth.spec.ts` | 6 | Login/register page load, validation, auth redirect |
-| `health.spec.ts` | 4 | API health, 401 on protected routes, rate limiter |
-| `navigation.spec.ts` | 7 | Authenticated navigation, dark mode, search, logout |
-| `security.spec.ts` | 5 | Security headers, CORS, anti-enumeration, protected routes |
+| File                 | Tests | Description                                                |
+| -------------------- | ----- | ---------------------------------------------------------- |
+| `auth.spec.ts`       | 6     | Login/register page load, validation, auth redirect        |
+| `health.spec.ts`     | 4     | API health, 401 on protected routes, rate limiter          |
+| `navigation.spec.ts` | 7     | Authenticated navigation, dark mode, search, logout        |
+| `security.spec.ts`   | 5     | Security headers, CORS, anti-enumeration, protected routes |
 
 ### Running in CI
 
 The GitHub Actions `ci.yml` workflow includes an `e2e` job that:
+
 1. Starts a PostgreSQL service container
 2. Pushes the Prisma schema
 3. Installs Playwright Chromium
@@ -125,12 +130,12 @@ The GitHub Actions `ci.yml` workflow includes an `e2e` job that:
 
 ## Test Commands Summary
 
-| Command | Scope | Runner |
-|---------|-------|--------|
-| `cd apps/api && npm test` | API unit + integration | Vitest |
-| `cd apps/api && npm run test:coverage` | API with coverage | Vitest |
-| `cd apps/web && npx jest` | Frontend all | Jest |
-| `npm run test:e2e` | E2E all | Playwright |
-| `npm run test:e2e:ui` | E2E interactive | Playwright |
+| Command                                | Scope                  | Runner     |
+| -------------------------------------- | ---------------------- | ---------- |
+| `cd apps/api && npm test`              | API unit + integration | Vitest     |
+| `cd apps/api && npm run test:coverage` | API with coverage      | Vitest     |
+| `cd apps/web && npx jest`              | Frontend all           | Jest       |
+| `npm run test:e2e`                     | E2E all                | Playwright |
+| `npm run test:e2e:ui`                  | E2E interactive        | Playwright |
 
 [Back to Home](.)

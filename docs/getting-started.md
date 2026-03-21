@@ -27,28 +27,28 @@ cp infra/.env.example infra/.env
 
 Required environment variables:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `POSTGRES_USER` | Database user | `cc_user` |
-| `POSTGRES_PASSWORD` | Database password | `strongpassword` |
-| `POSTGRES_DB` | Database name | `contractcanvas` |
-| `JWT_SECRET` | JWT signing key (min 32 chars) | `your-secret-key-here...` |
-| `S3_ACCESS_KEY` | MinIO/S3 access key | `minioadmin` |
-| `S3_SECRET_KEY` | MinIO/S3 secret key | `minioadmin` |
-| `FRONTEND_URL` | Frontend origin for CORS | `http://localhost:4200` |
+| Variable            | Description                    | Example                   |
+| ------------------- | ------------------------------ | ------------------------- |
+| `POSTGRES_USER`     | Database user                  | `cc_user`                 |
+| `POSTGRES_PASSWORD` | Database password              | `strongpassword`          |
+| `POSTGRES_DB`       | Database name                  | `contractcanvas`          |
+| `JWT_SECRET`        | JWT signing key (min 32 chars) | `your-secret-key-here...` |
+| `S3_ACCESS_KEY`     | MinIO/S3 access key            | `minioadmin`              |
+| `S3_SECRET_KEY`     | MinIO/S3 secret key            | `minioadmin`              |
+| `FRONTEND_URL`      | Frontend origin for CORS       | `http://localhost:4200`   |
 
 Optional variables:
 
-| Variable | Description |
-|----------|-------------|
-| `REDIS_URL` | Redis connection (enables BullMQ queues) |
-| `STRIPE_SECRET_KEY` | Stripe API key for billing |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signature verification |
-| `POSTMARK_API_TOKEN` | Email delivery via Postmark |
-| `SENTRY_DSN` | Error tracking |
-| `DOCUSIGN_ACCESS_TOKEN` | DocuSign API access |
-| `DOCUSIGN_ACCOUNT_ID` | DocuSign account |
-| `HELLOSIGN_API_KEY` | HelloSign API key |
+| Variable                | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `REDIS_URL`             | Redis connection (enables BullMQ queues) |
+| `STRIPE_SECRET_KEY`     | Stripe API key for billing               |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signature verification    |
+| `POSTMARK_API_TOKEN`    | Email delivery via Postmark              |
+| `SENTRY_DSN`            | Error tracking                           |
+| `DOCUSIGN_ACCESS_TOKEN` | DocuSign API access                      |
+| `DOCUSIGN_ACCOUNT_ID`   | DocuSign account                         |
+| `HELLOSIGN_API_KEY`     | HelloSign API key                        |
 
 ## 3. Start Infrastructure
 
@@ -74,6 +74,7 @@ cd apps/api && npx tsx prisma/seed.ts
 Creates sample users (alice/bob/carol), organizations, matters, contracts, tasks, and clauses.
 
 **Seed credentials:**
+
 - `alice@example.com` / `Password1234!` (ADMIN, org OWNER)
 - `bob@example.com` / `Password1234!` (LAWYER, MEMBER)
 - `carol@example.com` / `Password1234!` (PARALEGAL, MEMBER)

@@ -28,12 +28,12 @@ ContractCanvas is a contract lifecycle management platform that provides:
 
 ## 4. Subscription Plans
 
-| Feature | Starter | Professional | Enterprise |
-|---------|---------|-------------|------------|
-| Matters | 10 | 100 | Unlimited |
-| Members | 3 | 25 | Unlimited |
-| Storage | 1 GB | 50 GB | Custom |
-| E-signatures | 5/mo | 100/mo | Custom |
+| Feature      | Starter | Professional | Enterprise |
+| ------------ | ------- | ------------ | ---------- |
+| Matters      | 10      | 100          | Unlimited  |
+| Members      | 3       | 25           | Unlimited  |
+| Storage      | 1 GB    | 50 GB        | Custom     |
+| E-signatures | 5/mo    | 100/mo       | Custom     |
 
 - Free 14-day trial on all plans
 - Billing is monthly or annual via Stripe

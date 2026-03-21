@@ -29,11 +29,11 @@ interface SignatureProvider {
 
 ### Implementations
 
-| Provider | Class | Env Vars | Fallback |
-|----------|-------|----------|----------|
-| DocuSign | `DocuSignProvider` | `DOCUSIGN_BASE_URL`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_ACCESS_TOKEN` | StubProvider |
-| HelloSign | `HelloSignProvider` | `HELLOSIGN_API_KEY` | StubProvider |
-| Stub | `StubProvider` | None | N/A (dev/test) |
+| Provider  | Class               | Env Vars                                                            | Fallback       |
+| --------- | ------------------- | ------------------------------------------------------------------- | -------------- |
+| DocuSign  | `DocuSignProvider`  | `DOCUSIGN_BASE_URL`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_ACCESS_TOKEN` | StubProvider   |
+| HelloSign | `HelloSignProvider` | `HELLOSIGN_API_KEY`                                                 | StubProvider   |
+| Stub      | `StubProvider`      | None                                                                | N/A (dev/test) |
 
 If the required env vars are missing, the system automatically falls back to `StubProvider` which logs operations but doesn't make real API calls.
 
@@ -116,12 +116,13 @@ Unauthenticated endpoint called by DocuSign/HelloSign when envelope status chang
 
 ## Webhook Signature Verification
 
-| Provider | Header | Algorithm |
-|----------|--------|-----------|
-| DocuSign | `X-DocuSign-Signature-1` | HMAC-SHA256 (base64) |
-| HelloSign | `X-HelloSign-Signature` | HMAC-SHA256 (hex) |
+| Provider  | Header                   | Algorithm            |
+| --------- | ------------------------ | -------------------- |
+| DocuSign  | `X-DocuSign-Signature-1` | HMAC-SHA256 (base64) |
+| HelloSign | `X-HelloSign-Signature`  | HMAC-SHA256 (hex)    |
 
 Set the corresponding env var for verification:
+
 - `DOCUSIGN_WEBHOOK_SECRET`
 - `HELLOSIGN_WEBHOOK_SECRET`
 

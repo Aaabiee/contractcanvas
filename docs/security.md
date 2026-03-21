@@ -124,10 +124,10 @@ Share links use org-scoped resource verification: `fetchResource()` validates th
 
 ### Rate Limiting
 
-| Scope | Limit | Window |
-|-------|-------|--------|
-| Auth routes | 20 requests | 15 minutes |
-| API routes | 300 requests | 15 minutes |
+| Scope          | Limit         | Window     |
+| -------------- | ------------- | ---------- |
+| Auth routes    | 20 requests   | 15 minutes |
+| API routes     | 300 requests  | 15 minutes |
 | API key routes | 1000 requests | 15 minutes |
 
 ### Content Security

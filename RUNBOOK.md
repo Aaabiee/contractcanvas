@@ -2,16 +2,17 @@
 
 ## Recovery Objectives
 
-| Metric | Target   |
-|--------|----------|
-| RTO    | 4 hours  |
-| RPO    | 1 hour   |
+| Metric | Target  |
+| ------ | ------- |
+| RTO    | 4 hours |
+| RPO    | 1 hour  |
 
 ---
 
 ## Database Backups
 
 ### Schedule
+
 Daily backups run at **02:00 UTC** via `infra/scripts/backup.ts`. Backups are stored at:
 
 ```text
@@ -19,10 +20,12 @@ s3://<BACKUP_BUCKET>/backups/daily/contractcanvas-YYYYMMDD.sql.gz
 ```
 
 ### S3 Lifecycle Policy (apply manually in AWS console)
+
 - Daily backups: retain **30 days**
 - Weekly backups (Mondays): retain **1 year**
 
 Apply via CLI:
+
 ```bash
 aws s3api put-bucket-lifecycle-configuration \
   --bucket <BACKUP_BUCKET> \
@@ -32,23 +35,27 @@ aws s3api put-bucket-lifecycle-configuration \
 ### Restore Procedure
 
 1. Download the target backup:
+
    ```bash
    aws s3 cp s3://<BACKUP_BUCKET>/backups/daily/contractcanvas-YYYYMMDD.sql.gz /tmp/restore.sql.gz
    ```
 
 2. Create a restore target (do **not** restore over production directly):
+
    ```bash
    createdb contractcanvas_restore
    gunzip -c /tmp/restore.sql.gz | psql -U <PG_USER> -d contractcanvas_restore
    ```
 
 3. Verify integrity:
+
    ```bash
    DATABASE_URL=postgresql://<PG_USER>:<PG_PASS>@localhost/contractcanvas_restore \
      npx prisma migrate status --schema=apps/api/prisma/schema.prisma
    ```
 
 4. If the restore looks good, promote by renaming:
+
    ```bash
    psql -c "ALTER DATABASE contractcanvas RENAME TO contractcanvas_old;"
    psql -c "ALTER DATABASE contractcanvas_restore RENAME TO contractcanvas;"
@@ -65,6 +72,7 @@ aws s3api put-bucket-lifecycle-configuration \
 Rotating `JWT_SECRET` **immediately invalidates all active sessions** (mass logout).
 
 Steps:
+
 1. Schedule a **maintenance window** (recommended off-peak, e.g. 02:00–03:00 UTC).
 2. Generate a new secret: `openssl rand -base64 64`
 3. Update the secret in your secrets manager (AWS Secrets Manager / GitHub Secrets).
@@ -72,6 +80,7 @@ Steps:
 5. Optionally call `revokeAllUserSessions()` for all users via a migration script if you want a clean cut.
 
 ### STRIPE_SECRET_KEY Rotation
+
 1. Create new restricted key in Stripe dashboard.
 2. Update env var.
 3. Redeploy API.
@@ -94,9 +103,11 @@ Steps:
 Symptom: `too many connections` errors in logs.
 
 1. Check PgBouncer stats:
+
    ```bash
    docker exec contractcanvas-pgbouncer psql -h localhost -U pgbouncer pgbouncer -c "SHOW POOLS;"
    ```
+
 2. Increase `MAX_CLIENT_CONN` in docker-compose if sustained load.
 3. Check for connection leaks (long-running transactions).
 
@@ -111,12 +122,12 @@ Symptom: `too many connections` errors in logs.
 
 ## Scheduled Maintenance
 
-| Task                     | Frequency | Tool                                  |
-|--------------------------|-----------|---------------------------------------|
-| Database backup          | Daily     | `infra/scripts/backup.ts`             |
-| Backup verification      | Weekly    | `.github/workflows/backup-verify.yml` |
-| Expired session cleanup  | Daily     | BullMQ cleanupQueue                   |
-| Retention policy sweep   | Weekly    | BullMQ cleanupQueue                   |
+| Task                    | Frequency | Tool                                  |
+| ----------------------- | --------- | ------------------------------------- |
+| Database backup         | Daily     | `infra/scripts/backup.ts`             |
+| Backup verification     | Weekly    | `.github/workflows/backup-verify.yml` |
+| Expired session cleanup | Daily     | BullMQ cleanupQueue                   |
+| Retention policy sweep  | Weekly    | BullMQ cleanupQueue                   |
 
 ---
 
@@ -133,6 +144,7 @@ The API is stateless except for SSE connections (`/api/events/stream`). For mult
 ### Managed Postgres (recommended for production)
 
 For production, replace self-hosted Postgres with:
+
 - **AWS RDS PostgreSQL** (includes automated PITR, Multi-AZ)
 - **Supabase** (includes PITR, connection pooling via Supavisor)
 
@@ -221,11 +233,11 @@ Before production launch, run a load test with 50 concurrent users:
 
 Set `LOG_TRANSPORT` env var to route structured logs:
 
-| Value        | Destination    | Required Env Vars                     |
-| ------------ | -------------- | ------------------------------------- |
-| (unset)      | JSON stdout    | none                                  |
-| `datadog`    | Datadog        | `DD_API_KEY`                          |
-| `cloudwatch` | AWS CloudWatch | `CW_LOG_GROUP`, `AWS_DEFAULT_REGION`  |
-| `loki`       | Grafana Loki   | `LOKI_URL`                            |
+| Value        | Destination    | Required Env Vars                    |
+| ------------ | -------------- | ------------------------------------ |
+| (unset)      | JSON stdout    | none                                 |
+| `datadog`    | Datadog        | `DD_API_KEY`                         |
+| `cloudwatch` | AWS CloudWatch | `CW_LOG_GROUP`, `AWS_DEFAULT_REGION` |
+| `loki`       | Grafana Loki   | `LOKI_URL`                           |
 
 Install the corresponding npm package before use (e.g., `npm i pino-datadog-transport`).

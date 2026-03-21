@@ -8,28 +8,28 @@ ContractCanvas ("we", "us") operates the ContractCanvas platform at [URL]. This 
 
 ## 2. Data We Collect
 
-| Category | Examples | Basis |
-|----------|----------|-------|
-| Account data | Name, email, password hash, role | Contract performance |
-| Organization data | Org name, slug, member list | Contract performance |
-| Contract data | Titles, versions, clause content, signatures | Contract performance |
-| Document data | Uploaded files, metadata, storage keys | Contract performance |
-| Usage data | IP address, user agent, timestamps, audit logs | Legitimate interest |
-| Payment data | Stripe customer ID, subscription status | Contract performance |
-| Communication data | Email address for transactional emails | Contract performance |
+| Category           | Examples                                       | Basis                |
+| ------------------ | ---------------------------------------------- | -------------------- |
+| Account data       | Name, email, password hash, role               | Contract performance |
+| Organization data  | Org name, slug, member list                    | Contract performance |
+| Contract data      | Titles, versions, clause content, signatures   | Contract performance |
+| Document data      | Uploaded files, metadata, storage keys         | Contract performance |
+| Usage data         | IP address, user agent, timestamps, audit logs | Legitimate interest  |
+| Payment data       | Stripe customer ID, subscription status        | Contract performance |
+| Communication data | Email address for transactional emails         | Contract performance |
 
 We do **not** collect or store credit card numbers — payment processing is handled entirely by Stripe.
 
 ## 3. Sub-Processors
 
-| Sub-processor | Purpose | Location |
-|---------------|---------|----------|
-| Stripe | Payment processing, subscriptions | USA |
-| DocuSign | Electronic signatures | USA |
-| HelloSign (Dropbox Sign) | Electronic signatures | USA |
-| Amazon Web Services (S3) | Document storage | Configurable region |
-| Postmark | Transactional email delivery | USA |
-| Sentry | Error tracking and monitoring | USA |
+| Sub-processor            | Purpose                           | Location            |
+| ------------------------ | --------------------------------- | ------------------- |
+| Stripe                   | Payment processing, subscriptions | USA                 |
+| DocuSign                 | Electronic signatures             | USA                 |
+| HelloSign (Dropbox Sign) | Electronic signatures             | USA                 |
+| Amazon Web Services (S3) | Document storage                  | Configurable region |
+| Postmark                 | Transactional email delivery      | USA                 |
+| Sentry                   | Error tracking and monitoring     | USA                 |
 
 ## 4. How We Use Your Data
 

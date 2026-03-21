@@ -7,13 +7,13 @@ title: Contributing
 
 ## Branch Strategy
 
-| Branch | Purpose |
-|--------|---------|
-| `main` | Production-ready code |
-| `develop` | Integration branch for features |
-| `feature/<name>` | Feature branches (from `develop`) |
-| `release/<version>` | Release candidates |
-| `hotfix/<name>` | Production hotfixes (from `main`) |
+| Branch              | Purpose                           |
+| ------------------- | --------------------------------- |
+| `main`              | Production-ready code             |
+| `develop`           | Integration branch for features   |
+| `feature/<name>`    | Feature branches (from `develop`) |
+| `release/<version>` | Release candidates                |
+| `hotfix/<name>`     | Production hotfixes (from `main`) |
 
 ## Development Workflow
 

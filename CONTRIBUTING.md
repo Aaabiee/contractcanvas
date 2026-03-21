@@ -49,12 +49,12 @@ The API auto-reloads via `tsx watch`; Angular uses the built-in `ng serve` live 
 
 ## Branch Naming
 
-| Prefix | When to use |
-| --- | --- |
-| `feat/` | New feature or capability |
-| `fix/` | Bug fix |
+| Prefix   | When to use                                |
+| -------- | ------------------------------------------ |
+| `feat/`  | New feature or capability                  |
+| `fix/`   | Bug fix                                    |
 | `chore/` | Tooling, dependency updates, build changes |
-| `docs/` | Documentation only |
+| `docs/`  | Documentation only                         |
 
 Examples: `feat/docusign-integration`, `fix/refresh-token-rotation`, `chore/bump-prisma-5`.
 

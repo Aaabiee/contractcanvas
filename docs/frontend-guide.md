@@ -75,9 +75,11 @@ Standard CRUD services using `HttpClient`. All return `Observable<T>` and use th
 ## Routing
 
 Public routes (no auth required):
+
 - `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`
 
 Protected routes (wrapped in `authGuard`):
+
 - `/dashboard` — layout shell with sidenav
   - `/dashboard` — home stats
   - `/matters`, `/matters/:id`
@@ -120,6 +122,7 @@ The `/settings/organization` page has four tabs:
 **JWT Interceptor** — attaches `Authorization: Bearer <token>` to all API requests. Skips auth routes.
 
 **Error Interceptor** — intercepts HTTP errors globally:
+
 - 401: calls `AuthService.logout()`, redirects to `/login`
 - 402: lazy-loads `UpgradeDialogComponent` showing usage bar and upgrade link
 - 403: redirects to `/dashboard`
