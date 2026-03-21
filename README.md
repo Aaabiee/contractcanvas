@@ -4,7 +4,7 @@ ContractCanvas is a multi-tenant contract lifecycle management (CLM) platform fo
 
 ## Architecture
 
-![ContractCanvas System Architecture](docs/assets/architecture.svg)
+![ContractCanvas System Architecture](docs/assets/architecture.png)
 
 ## Tech Stack
 

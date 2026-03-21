@@ -314,7 +314,7 @@
   <!-- WAL/Backup -->
   <rect x="800" y="694" width="220" height="52" rx="8" fill="#fff" filter="url(#shadow)"/>
   <rect x="800" y="694" width="220" height="52" rx="8" fill="none" stroke="#E65100" stroke-width="1.5"/>
-  <text x="820" y="718" font-size="13" font-weight="600" fill="#BF360C">Backup & Recovery</text>
+  <text x="820" y="718" font-size="13" font-weight="600" fill="#BF360C">Backup &amp; Recovery</text>
   <text x="820" y="734" font-size="10.5" fill="#546E7A">pg_dump → S3  |  WAL archiving  |  PITR</text>
 
   <!-- ==================== SECURITY ANNOTATIONS ==================== -->

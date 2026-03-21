@@ -7,7 +7,7 @@ nav_order: 3
 
 ## System Overview
 
-![ContractCanvas System Architecture]({{ '/assets/architecture.svg' | relative_url }})
+![ContractCanvas System Architecture]({{ '/assets/architecture.png' | relative_url }})
 
 <details>
 <summary>Text-based diagram (for terminals)</summary>
