@@ -27,6 +27,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipDefaultOptions, MAT_TOOLTIP_DEFAULT_OPTIONS } from '@angular/material/tooltip';
 
 import { AuthService } from '../../services/auth.service';
+import { NotificationService } from '../../services/notification.service';
 import { ConfirmLogoutDialogComponent } from './confirm-logout.dialog';
 
 type Role = 'ADMIN' | 'LAWYER' | 'PARALEGAL' | 'CLIENT';
@@ -65,11 +66,12 @@ export const tooltipOpts: MatTooltipDefaultOptions = {
   styleUrls: ['./dashboard.component.scss'],
 })
 export class DashboardComponent {
-  public authService = inject(AuthService);
-  private router     = inject(Router);
-  private snack      = inject(MatSnackBar);
-  private dialog     = inject(MatDialog);
-  private bp         = inject(BreakpointObserver);
+  public authService       = inject(AuthService);
+  private router           = inject(Router);
+  private snack            = inject(MatSnackBar);
+  private dialog           = inject(MatDialog);
+  private bp               = inject(BreakpointObserver);
+  private notificationSvc  = inject(NotificationService);
 
   isHandset$ = this.bp.observe(Breakpoints.Handset).pipe(
     map(r => r.matches),
@@ -78,6 +80,10 @@ export class DashboardComponent {
 
   themeDark = signal<boolean>((() => localStorage.getItem('cc.theme') === 'dark')());
   constructor() {
+    this.notificationSvc.startStream();
+    this.notificationSvc.onNotification = n => {
+      this.snack.open(n.title, 'Dismiss', { duration: 4000, panelClass: ['notification-snack'] });
+    };
     effect(() => {
       const dark = this.themeDark();
       document.body.classList.toggle('theme-dark', dark);
@@ -123,6 +129,7 @@ export class DashboardComponent {
     if (!confirmed) return;
 
     try {
+      this.notificationSvc.stopStream();
       this.authService.logout();
       this.snack.open('You have been logged out.', 'OK', { duration: 2500 });
       this.router.navigate(['/login']);

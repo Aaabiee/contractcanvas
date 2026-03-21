@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, NgZone } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 
@@ -24,10 +24,38 @@ export interface NotificationPage {
 
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
-  private http = inject(HttpClient);
-  private base = '/api/notifications';
+  private http   = inject(HttpClient);
+  private zone   = inject(NgZone);
+  private base   = '/api/notifications';
 
   unreadCount = signal(0);
+
+  private eventSource: EventSource | null = null;
+  onNotification?: (n: Notification) => void;
+
+  startStream(): void {
+    if (this.eventSource) return;
+    this.eventSource = new EventSource('/api/events/stream', { withCredentials: true });
+    this.eventSource.addEventListener('notification', (e: MessageEvent) => {
+      this.zone.run(() => {
+        this.unreadCount.update(n => n + 1);
+        try {
+          const notification = JSON.parse(e.data) as Notification;
+          this.onNotification?.(notification);
+        } catch { /* ignore malformed */ }
+      });
+    });
+    this.eventSource.onerror = () => {
+      this.eventSource?.close();
+      this.eventSource = null;
+      setTimeout(() => this.startStream(), 5_000);
+    };
+  }
+
+  stopStream(): void {
+    this.eventSource?.close();
+    this.eventSource = null;
+  }
 
   getNotifications(params?: { unread?: boolean; limit?: number; offset?: number }): Observable<NotificationPage> {
     let p = new HttpParams();

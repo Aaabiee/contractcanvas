@@ -3,6 +3,33 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideHttpClient } from '@angular/common/http';
 import { NotificationService, NotificationPage, Notification } from './notification.service';
 
+class MockEventSource {
+  static CONNECTING = 0; static OPEN = 1; static CLOSED = 2;
+  readyState = MockEventSource.OPEN;
+  onmessage: ((e: MessageEvent) => void) | null = null;
+  onerror:   ((e: Event) => void) | null = null;
+  private _listeners: Record<string, ((e: MessageEvent) => void)[]> = {};
+  constructor(public url: string, public opts?: EventSourceInit) {}
+  addEventListener(type: string, fn: (e: MessageEvent) => void) {
+    (this._listeners[type] ??= []).push(fn);
+  }
+  dispatchEvent(type: string, data: string) {
+    this._listeners[type]?.forEach(fn => fn({ data } as MessageEvent));
+  }
+  close() { this.readyState = MockEventSource.CLOSED; }
+}
+
+let mockEs: MockEventSource | null = null;
+const OrigEventSource = globalThis.EventSource;
+
+beforeAll(() => {
+  (globalThis as any).EventSource = jest.fn((url: string, opts?: EventSourceInit) => {
+    mockEs = new MockEventSource(url, opts);
+    return mockEs;
+  });
+});
+afterAll(() => { (globalThis as any).EventSource = OrigEventSource; });
+
 function makePage(overrides: Partial<NotificationPage> = {}): NotificationPage {
   return { data: [], total: 0, unreadCount: 0, limit: 10, offset: 0, ...overrides };
 }
@@ -110,5 +137,43 @@ describe('NotificationService', () => {
 
   it('initial unreadCount is 0', () => {
     expect(service.unreadCount()).toBe(0);
+  });
+
+  describe('startStream() / stopStream()', () => {
+    afterEach(() => service.stopStream());
+
+    it('startStream creates an EventSource at /api/events/stream', () => {
+      service.startStream();
+      expect(mockEs?.url).toBe('/api/events/stream');
+    });
+
+    it('startStream is idempotent — calling twice reuses the same EventSource', () => {
+      service.startStream();
+      const firstEs = mockEs;
+      service.startStream();
+      expect(mockEs).toBe(firstEs);
+    });
+
+    it('stopStream closes the EventSource', () => {
+      service.startStream();
+      expect(mockEs?.readyState).toBe(MockEventSource.OPEN);
+      service.stopStream();
+      expect(mockEs?.readyState).toBe(MockEventSource.CLOSED);
+    });
+
+    it('notification event increments unreadCount', () => {
+      service.unreadCount.set(2);
+      service.startStream();
+      mockEs!.dispatchEvent('notification', JSON.stringify({ id: 'n1', title: 'Hello' }));
+      expect(service.unreadCount()).toBe(3);
+    });
+
+    it('notification event calls onNotification callback', () => {
+      const cb = jest.fn();
+      service.onNotification = cb;
+      service.startStream();
+      mockEs!.dispatchEvent('notification', JSON.stringify({ id: 'n1', title: 'Hello' }));
+      expect(cb).toHaveBeenCalledWith(expect.objectContaining({ id: 'n1' }));
+    });
   });
 });

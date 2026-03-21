@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import prisma from '../prisma.js';
+import { createNotifications } from './notify.js';
 
 export function startReminderScheduler(): void {
   cron.schedule('* * * * *', async () => {
@@ -28,25 +29,22 @@ export function startReminderScheduler(): void {
 
       const now = new Date();
 
-      await prisma.$transaction([
-        ...due.map(r =>
-          prisma.notification.createMany({
-            data: (membersByOrg.get(r.organizationId) ?? []).map(userId => ({
-              userId,
-              organizationId: r.organizationId,
-              type:  'REMINDER' as const,
-              title: `Reminder: ${r.type} — ${r.contract.title}`,
-              body:  `A ${r.type.toLowerCase()} reminder is due for contract "${r.contract.title}".`,
-              data:  { contractId: r.contractId },
-            })),
-            skipDuplicates: true,
-          }),
-        ),
-        prisma.reminder.updateMany({
-          where: { id: { in: due.map(r => r.id) } },
-          data:  { sentAt: now },
-        }),
-      ]);
+      const allNotifications = due.flatMap(r =>
+        (membersByOrg.get(r.organizationId) ?? []).map(userId => ({
+          userId,
+          organizationId: r.organizationId,
+          type:  'REMINDER' as const,
+          title: `Reminder: ${r.type} — ${r.contract.title}`,
+          body:  `A ${r.type.toLowerCase()} reminder is due for contract "${r.contract.title}".`,
+          data:  { contractId: r.contractId },
+        })),
+      );
+
+      await createNotifications(allNotifications);
+      await prisma.reminder.updateMany({
+        where: { id: { in: due.map(r => r.id) } },
+        data:  { sentAt: now },
+      });
 
       console.log(`[reminder-scheduler] Sent ${due.length} reminder(s) at ${now.toISOString()}`);
     } catch (err) {

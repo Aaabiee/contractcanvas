@@ -26,6 +26,7 @@ import { router as billingRouter }        from '../../routes/billing.js';
 import searchRouter                        from '../../routes/search.js';
 import remindersRouter                     from '../../routes/reminders.js';
 import { router as shareLinksRouter, shareTokenRouter } from '../../routes/share-links.js';
+import eventsRouter from '../../routes/events.js';
 import { PrismaClient }                   from '@prisma/client';
 
 export function buildApp(): Express {
@@ -46,6 +47,7 @@ export function buildApp(): Express {
   app.use('/api/reminders',   protect, remindersRouter);
   app.use('/api/share-links', shareLinksRouter);
   app.use('/api/share',       shareTokenRouter);
+  app.use('/api/events',      eventsRouter);
   return app;
 }
 

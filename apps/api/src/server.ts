@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
 import { app as appCfg, DATABASE_URL as pgUrl, db } from './config.js';
 
-import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter } from './routes/index.js';
+import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter, events } from './routes/index.js';
 import { startReminderScheduler } from './lib/reminder-scheduler.js';
 import { protect } from './middleware/auth.js';
 import { applySecurityHeaders } from './middleware/security.js';
@@ -84,6 +84,7 @@ app.use('/api/search',        protect, search);
 app.use('/api/reminders',     protect, reminders);
 app.use('/api/share-links',   shareLinks);
 app.use('/api/share',         shareTokenRouter);
+app.use('/api/events',        events);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' });

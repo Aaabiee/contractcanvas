@@ -1,12 +1,22 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
 import { AuthService } from '../../services/auth.service';
+import { NotificationService } from '../../services/notification.service';
+
+class MockNotificationService {
+  unreadCount = signal(0);
+  startStream  = jest.fn();
+  stopStream   = jest.fn();
+  onNotification: undefined;
+}
 
 const mockCurrentUser = signal<any>(null);
 
@@ -31,7 +41,10 @@ describe('DashboardComponent', () => {
       imports: [DashboardComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
-        { provide: AuthService, useClass: MockAuthService },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService,         useClass: MockAuthService         },
+        { provide: NotificationService, useClass: MockNotificationService },
       ],
     })
       .overrideComponent(DashboardComponent, {
