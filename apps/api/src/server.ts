@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
@@ -9,11 +8,12 @@ import { app as appCfg, DATABASE_URL as pgUrl, db } from './config.js';
 
 import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses } from './routes/index.js';
 import { protect } from './middleware/auth.js';
+import { applySecurityHeaders } from './middleware/security.js';
 
 const app = express();
 
 app.set('trust proxy', 1); // trust one proxy hop (nginx / load balancer)
-app.use(helmet());
+applySecurityHeaders(app);
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:4200')
   .split(',')
