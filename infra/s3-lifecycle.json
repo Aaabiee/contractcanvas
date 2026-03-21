@@ -1,0 +1,37 @@
+{
+  "Rules": [
+    {
+      "ID": "DailyBackupRetention30Days",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "backups/daily/"
+      },
+      "Expiration": {
+        "Days": 30
+      }
+    },
+    {
+      "ID": "WeeklyBackupRetention1Year",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "backups/weekly/"
+      },
+      "Expiration": {
+        "Days": 365
+      }
+    },
+    {
+      "ID": "TransitionDailyToIA",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "backups/daily/"
+      },
+      "Transitions": [
+        {
+          "Days": 7,
+          "StorageClass": "STANDARD_IA"
+        }
+      ]
+    }
+  ]
+}
