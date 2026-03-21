@@ -26,6 +26,9 @@ const mockPrisma = {
   matter: {
     findFirst: vi.fn(),
   },
+  organizationMember: {
+    findFirst: vi.fn(),
+  },
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
 
@@ -196,6 +199,26 @@ describe('POST /api/tasks', () => {
       })
     );
   });
+
+  it('returns 400 when assigneeId is not a member of the org (IDOR guard)', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'matter-1' });
+    mockPrisma.organizationMember.findFirst.mockResolvedValue(null); // foreign user
+    const res = await request(buildApp())
+      .post('/')
+      .send({ title: 'T', matterId: 'cltest1234567890123456789', assigneeId: 'clforeign1234567890123' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not a member/i);
+  });
+
+  it('creates task with valid assigneeId from same org', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'matter-1' });
+    mockPrisma.organizationMember.findFirst.mockResolvedValue({ userId: 'user-2' });
+    mockPrisma.task.create.mockResolvedValue({ ...sampleTask, assigneeId: 'user-2' });
+    const res = await request(buildApp())
+      .post('/')
+      .send({ title: 'T', matterId: 'cltest1234567890123456789', assigneeId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(201);
+  });
 });
 
 describe('PATCH /api/tasks/:id', () => {
@@ -208,6 +231,16 @@ describe('PATCH /api/tasks/:id', () => {
     mockPrisma.task.findFirst.mockResolvedValue(null);
     const res = await request(buildApp()).patch('/task-999').send({ title: 'X' });
     expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when assigneeId on update is not a member of the org (IDOR guard)', async () => {
+    mockPrisma.task.findFirst.mockResolvedValue(sampleTask);
+    mockPrisma.organizationMember.findFirst.mockResolvedValue(null); // foreign user
+    const res = await request(buildApp())
+      .patch('/task-1')
+      .send({ assigneeId: 'clforeign1234567890123' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not a member/i);
   });
 
   it('marks task complete when completedAt is set', async () => {
