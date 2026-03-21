@@ -25,6 +25,7 @@ const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.
 
 let pgContainer:    StartedPostgreSqlContainer;
 let minioContainer: StartedTestContainer;
+let redisContainer: StartedTestContainer;
 
 const MINIO_ACCESS_KEY = 'testAccessKey';
 const MINIO_SECRET_KEY = 'testSecretKey';
@@ -38,8 +39,8 @@ export async function setup(): Promise<void> {
 
   process.env['NODE_ENV'] = 'test';
 
-  // Boot PostgreSQL and MinIO in parallel
-  [pgContainer, minioContainer] = await Promise.all([
+  // Boot PostgreSQL, MinIO, and Redis in parallel
+  [pgContainer, minioContainer, redisContainer] = await Promise.all([
     new PostgreSqlContainer('postgres:16-alpine')
       .withDatabase('contractcanvas_test')
       .withUsername('test')
@@ -54,6 +55,11 @@ export async function setup(): Promise<void> {
       })
       .withCommand(['server', '/data'])
       .withWaitStrategy(Wait.forHttp('/minio/health/live', 9000).forStatusCode(200))
+      .start(),
+
+    new GenericContainer('redis:7-alpine')
+      .withExposedPorts(6379)
+      .withWaitStrategy(Wait.forLogMessage('Ready to accept connections'))
       .start(),
   ]);
 
@@ -92,6 +98,10 @@ export async function setup(): Promise<void> {
     await s3.send(new CreateBucketCommand({ Bucket: MINIO_BUCKET }));
   }
 
+  // ── Redis env var ─────────────────────────────────────────────────────────
+  const redisPort = redisContainer.getMappedPort(6379);
+  process.env['REDIS_URL'] = `redis://localhost:${redisPort}`;
+
   // ── JWT secret ───────────────────────────────────────────────────────────
   process.env['JWT_SECRET'] = 'integration-test-secret-minimum-32-chars!!';
 
@@ -107,5 +117,6 @@ export async function teardown(): Promise<void> {
   await Promise.all([
     pgContainer?.stop(),
     minioContainer?.stop(),
+    redisContainer?.stop(),
   ]);
 }

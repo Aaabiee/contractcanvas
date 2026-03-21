@@ -58,6 +58,20 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
       S3_BUCKET:     ${S3_BUCKET:-contractcanvas}
 
+  redis:
+    image: redis:7-alpine
+    container_name: contractcanvas-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # API service (production/staging only — override with profiles)
   api:
     build:
@@ -70,6 +84,8 @@ services:
       db:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       NODE_ENV:      ${NODE_ENV:-production}
@@ -84,6 +100,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
       STRIPE_SECRET_KEY:      ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET:  ${STRIPE_WEBHOOK_SECRET:-}
+      REDIS_URL:              redis://redis:6379
     ports:
       - "${API_PORT:-3333}:3333"
     healthcheck:
@@ -116,3 +133,4 @@ services:
 volumes:
   pgdata:    {}
   miniodata: {}
+  redisdata: {}

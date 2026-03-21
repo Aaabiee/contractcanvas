@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
 import type { $Enums } from '@prisma/client';
+import { isBlacklisted } from '../lib/redis.js';
 
 const ISSUER    = process.env.AUTH_ISSUER?.replace(/\/+$/, '');
 const AUDIENCE  = process.env.AUTH_AUDIENCE;
@@ -182,6 +183,12 @@ export async function protect(req: Request, res: Response, next: NextFunction): 
 
     if (!user.id) {
       res.status(401).json({ error: 'unauthorized', message: 'Invalid token (no subject)' });
+      return;
+    }
+
+    const jti = typeof (payload as any).jti === 'string' ? (payload as any).jti : null;
+    if (jti && await isBlacklisted(jti)) {
+      res.status(401).json({ error: 'unauthorized', message: 'Token has been revoked' });
       return;
     }
 

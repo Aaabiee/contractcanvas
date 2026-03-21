@@ -6,6 +6,7 @@ import { z } from 'zod';
 import prisma from '../prisma.js';
 import { jwt as jwtConfig } from '../config.js';
 import { protect } from '../middleware/auth.js';
+import { blacklistToken } from '../lib/redis.js';
 import {
   createSession,
   rotateSession,
@@ -61,8 +62,11 @@ async function buildTokenPayload(userId: string, knownUser?: KnownUser) {
   return { sub: user.id, email: user.email, role: user.role, emailVerified, organizations };
 }
 
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+
 function signAccessToken(payload: object): string {
-  return jwt.sign(payload, jwtConfig.secret, { expiresIn: '15m' });
+  const jti = crypto.randomBytes(16).toString('hex');
+  return jwt.sign({ ...payload, jti }, jwtConfig.secret, { expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 }
 
 function setRefreshCookie(res: Response, raw: string): void {
@@ -357,6 +361,17 @@ router.post('/refresh-token', async (req: Request, res: Response, next: NextFunc
 
 router.post('/logout', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const bearer = req.header('Authorization');
+    if (bearer?.startsWith('Bearer ')) {
+      const token = bearer.slice(7);
+      try {
+        const decoded = jwt.decode(token) as Record<string, unknown> | null;
+        if (decoded?.jti && typeof decoded.exp === 'number') {
+          const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+          await blacklistToken(decoded.jti as string, ttl);
+        }
+      } catch { /* malformed token — ignore */ }
+    }
     const rawToken = req.cookies?.[REFRESH_COOKIE];
     if (rawToken) await deleteSession(rawToken);
     clearRefreshCookie(res);
