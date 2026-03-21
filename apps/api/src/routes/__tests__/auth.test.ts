@@ -44,6 +44,7 @@ vi.mock('../../middleware/auth.js', () => ({
     req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'] };
     next();
   },
+  requireEmailVerified: (_req: any, _res: any, next: any) => { next(); },
   default: (req: any, _res: any, next: any) => {
     req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'] };
     next();

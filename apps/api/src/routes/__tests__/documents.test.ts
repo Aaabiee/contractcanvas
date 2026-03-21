@@ -37,6 +37,17 @@ const mockPrisma = {
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
 
+vi.mock('../../middleware/auth.js', () => ({
+  protect: (_req: any, _res: any, next: any) => next(),
+  requireEmailVerified: (_req: any, _res: any, next: any) => next(),
+  default: (_req: any, _res: any, next: any) => next(),
+}));
+
+vi.mock('../billing.js', () => ({
+  requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
+  billing: { use: vi.fn() },
+}));
+
 const { router } = await import('../documents.js');
 
 function buildApp(orgId = 'org-1') {
