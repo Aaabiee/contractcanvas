@@ -20,6 +20,7 @@ const mockPrisma = {
     findUnique: vi.fn(),
   },
   organizationMember: {
+    count: vi.fn(),
     create: vi.fn(),
     findMany: vi.fn(),
     findUnique: vi.fn(),
@@ -227,6 +228,7 @@ describe('PATCH /api/organizations/:orgId/members/:memberId', () => {
 
   it('updates member role when requester is owner', async () => {
     mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.organizationMember.count.mockResolvedValue(0);
     mockPrisma.organizationMember.update.mockResolvedValue({
       id: 'm1',
       role: 'ADMIN',
@@ -288,6 +290,7 @@ describe('PATCH /api/organizations/:orgId/members/:memberId — auth and error p
 
   it('returns 404 when member not found (P2025)', async () => {
     mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.organizationMember.count.mockResolvedValue(0);
     const { PrismaClientKnownRequestError } = await import('@prisma/client/runtime/library');
     const err = Object.create(PrismaClientKnownRequestError.prototype);
     Object.assign(err, { code: 'P2025', message: 'Not found' });

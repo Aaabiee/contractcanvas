@@ -1,8 +1,35 @@
 /**
  * Integration tests for /api/documents.
- * Runs against real PostgreSQL (Testcontainers) and real MinIO (Testcontainers).
- * Upload and download-URL tests use actual S3 operations.
+ * Runs against real PostgreSQL (Testcontainers).
+ * S3/MinIO is mocked — only the database layer uses real infrastructure.
  */
+
+import { vi } from 'vitest';
+
+// ─── Mock S3 before any route module is imported ────────────────────────────
+const mockS3Send = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+
+vi.mock('@aws-sdk/client-s3', () => ({
+  S3Client: vi.fn().mockImplementation(() => ({ send: mockS3Send })),
+  PutObjectCommand: vi.fn().mockImplementation((args: any) => args),
+  GetObjectCommand: vi.fn().mockImplementation((args: any) => args),
+  DeleteObjectCommand: vi.fn().mockImplementation((args: any) => args),
+}));
+
+const mockGetSignedUrl = vi.hoisted(() =>
+  vi.fn().mockImplementation((_client: any, command: any, _opts?: any) => {
+    // Include the filename from ResponseContentDisposition so tests can assert on it
+    const disposition = command?.ResponseContentDisposition ?? '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : 'file';
+    return Promise.resolve(`https://mock-s3.example.com/${filename}?X-Amz-Signature=abc`);
+  }),
+);
+
+vi.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: (...args: any[]) => mockGetSignedUrl(...args),
+}));
+// ─────────────────────────────────────────────────────────────────────────────
 
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
@@ -42,8 +69,8 @@ describe('POST /api/documents/upload', () => {
       .set('X-Organization-Id', orgHeader)
       .attach('file', Buffer.from('hello world'), { filename: 'notes.txt', contentType: 'text/plain' })
       .field('matterId', matterId);
-    // text/plain IS allowed — should succeed with 201
-    expect([201, 415]).toContain(res.status);
+    // text/plain IS in ALLOWED_MIME_TYPES and 'txt' is in ALLOWED_EXTENSIONS — should succeed
+    expect(res.status).toBe(201);
   });
 
   it('returns 400 when no file is attached', async () => {
