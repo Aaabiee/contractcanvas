@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Testing
+nav_order: 9
 ---
 
 # Testing Strategy

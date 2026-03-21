@@ -1,3 +1,9 @@
+---
+title: DPA
+parent: Legal
+nav_order: 3
+---
+
 # Data Processing Agreement (DPA)
 
 **Between:** [CUSTOMER_NAME] ("Data Controller") and ContractCanvas ("Data Processor")

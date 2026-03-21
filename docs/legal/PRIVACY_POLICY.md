@@ -1,3 +1,9 @@
+---
+title: Privacy Policy
+parent: Legal
+nav_order: 1
+---
+
 # ContractCanvas Privacy Policy
 
 **Last updated: [DATE]**

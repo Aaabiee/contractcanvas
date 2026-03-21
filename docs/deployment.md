@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Deployment
+nav_order: 7
 ---
 
 # Deployment

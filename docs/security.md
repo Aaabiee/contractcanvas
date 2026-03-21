@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Security
+nav_order: 6
 ---
 
 # Security

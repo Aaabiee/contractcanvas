@@ -1,6 +1,6 @@
 ---
-layout: default
 title: E-Signatures
+nav_order: 8
 ---
 
 # E-Signature Integration

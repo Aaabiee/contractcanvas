@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Frontend Guide
+nav_order: 5
 ---
 
 # Frontend Guide
