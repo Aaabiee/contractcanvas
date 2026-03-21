@@ -45,6 +45,19 @@
       <button type="button" mat-icon-button (click)="snav.toggle()" class="menu-btn" aria-label="Toggle sidenav">
         <mat-icon>menu</mat-icon>
       </button>
+      <form (ngSubmit)="onSearch()" class="search-form">
+        <input
+          class="search-input"
+          type="search"
+          placeholder="Search matters, contracts…"
+          [(ngModel)]="searchQuery"
+          name="searchQuery"
+          aria-label="Global search"
+        />
+        <button type="submit" mat-icon-button aria-label="Submit search">
+          <mat-icon>search</mat-icon>
+        </button>
+      </form>
       <span class="flex-1"></span>
       <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="Open user menu" matTooltip="Account">
         <mat-icon>account_circle</mat-icon>

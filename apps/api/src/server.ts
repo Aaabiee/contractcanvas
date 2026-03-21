@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
 import { app as appCfg, DATABASE_URL as pgUrl, db } from './config.js';
 
-import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses } from './routes/index.js';
+import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search } from './routes/index.js';
 import { protect } from './middleware/auth.js';
 import { applySecurityHeaders } from './middleware/security.js';
 
@@ -79,6 +79,7 @@ app.use('/api/tasks',         protect, tasks);
 app.use('/api/comments',      protect, comments);
 app.use('/api/notifications', protect, notifications);
 app.use('/api/clauses',       protect, clauses);
+app.use('/api/search',        protect, search);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' });

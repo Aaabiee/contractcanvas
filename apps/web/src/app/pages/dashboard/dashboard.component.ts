@@ -22,6 +22,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatInputModule } from '@angular/material/input';
+import { FormsModule } from '@angular/forms';
 import { MatTooltipDefaultOptions, MAT_TOOLTIP_DEFAULT_OPTIONS } from '@angular/material/tooltip';
 
 import { AuthService } from '../../services/auth.service';
@@ -56,6 +58,8 @@ export const tooltipOpts: MatTooltipDefaultOptions = {
     MatSnackBarModule,
     MatDialogModule,
     MatSlideToggleModule,
+    MatInputModule,
+    FormsModule,
   ],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],
@@ -98,8 +102,16 @@ export class DashboardComponent {
 
   canSeeAdmin = computed(() => this.userRole() === 'ADMIN');
 
+  searchQuery = '';
+
   goTo(path: string) {
     this.router.navigate([path]);
+  }
+
+  onSearch(): void {
+    const q = this.searchQuery.trim();
+    if (!q) return;
+    this.router.navigate(['/search'], { queryParams: { q } });
   }
 
   async onLogout() {

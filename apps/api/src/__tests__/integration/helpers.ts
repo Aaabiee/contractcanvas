@@ -23,6 +23,7 @@ import notificationsRouter                from '../../routes/notifications.js';
 import clausesRouter                      from '../../routes/clauses.js';
 import { router as documentsRouter }      from '../../routes/documents.js';
 import { router as billingRouter }        from '../../routes/billing.js';
+import searchRouter                        from '../../routes/search.js';
 import { PrismaClient }                   from '@prisma/client';
 
 export function buildApp(): Express {
@@ -39,6 +40,7 @@ export function buildApp(): Express {
   app.use('/api/documents',     protect, documentsRouter);
   // billing: /invoice has protect inline; /webhooks/stripe is intentionally public
   app.use('/api/billing', billingRouter);
+  app.use('/api/search', protect, searchRouter);
   return app;
 }
 
