@@ -1,4 +1,5 @@
 import * as postmark from 'postmark';
+import { logger } from '../lib/logger.js';
 
 const ENV      = process.env.NODE_ENV ?? 'development';
 const API_KEY  = process.env.POSTMARK_API_KEY ?? '';
@@ -20,7 +21,7 @@ export async function sendEmail(opts: SendEmailOpts): Promise<void> {
   if (ENV === 'test') return;
 
   if (!client) {
-    console.log(`[email] DEV — To: ${opts.to} | Subject: ${opts.subject}`);
+    logger.info({ to: opts.to, subject: opts.subject }, 'Email (dev no-op)');
     return;
   }
 

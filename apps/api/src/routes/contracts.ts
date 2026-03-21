@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../prisma.js';
+import { generateContractPdf } from '../services/pdf.service.js';
 
 export const router = Router();
 
@@ -234,6 +235,52 @@ router.get('/:contractId/versions', async (req: Request, res: Response, next: Ne
       include: { author: { select: { id: true, firstName: true, lastName: true } } },
     });
     res.json(versions);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/generate-pdf', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const organizationId = orgGuard(req, res);
+    if (!organizationId) return;
+
+    const { id } = req.params;
+
+    const contract = await prisma.contract.findFirst({
+      where: { id, organizationId, deletedAt: null },
+      include: {
+        organization:   { select: { name: true } },
+        currentVersion: { select: { number: true, title: true } },
+      },
+    });
+    if (!contract) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+
+    let pdfBuffer: Buffer;
+    try {
+      pdfBuffer = await generateContractPdf({
+        title:       contract.title,
+        status:      contract.status,
+        valueCents:  contract.valueCents,
+        currency:    contract.currency ?? undefined,
+        orgName:     contract.organization.name,
+        version:     contract.currentVersion
+          ? `v${contract.currentVersion.number}${contract.currentVersion.title ? ` – ${contract.currentVersion.title}` : ''}`
+          : undefined,
+        generatedAt: new Date(),
+      });
+    } catch (err: any) {
+      if (err.message?.includes('puppeteer not installed')) {
+        return res.status(503).json({ error: 'pdf_unavailable', message: 'PDF generation is not configured on this server.' });
+      }
+      throw err;
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${contract.id}-${Date.now()}.pdf"`);
+    res.send(pdfBuffer);
   } catch (error) {
     next(error);
   }

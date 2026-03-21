@@ -17,6 +17,11 @@ import remindersRouter                     from '../../routes/reminders.js';
 import { router as shareLinksRouter, shareTokenRouter } from '../../routes/share-links.js';
 import eventsRouter from '../../routes/events.js';
 import healthRouter from '../../routes/health.js';
+import analyticsRouter from '../../routes/analytics.js';
+import usersRouter from '../../routes/users.js';
+import apiKeysRouter from '../../routes/api-keys.js';
+import webhooksRouter from '../../routes/webhooks.js';
+import auditLogsRouter from '../../routes/audit-logs.js';
 import { PrismaClient }                   from '@prisma/client';
 
 export function buildApp(): Express {
@@ -38,7 +43,12 @@ export function buildApp(): Express {
   app.use('/api/share-links', shareLinksRouter);
   app.use('/api/share',       shareTokenRouter);
   app.use('/api/events',      eventsRouter);
-  app.use('/health',          healthRouter);
+  app.use('/health',                              healthRouter);
+  app.use('/api/analytics',                       protect, analyticsRouter);
+  app.use('/api/users',                           protect, usersRouter);
+  app.use('/api/organizations/:orgId/api-keys',   protect, apiKeysRouter);
+  app.use('/api/organizations/:orgId/webhooks',   protect, webhooksRouter);
+  app.use('/api/organizations/:orgId/audit-logs', protect, auditLogsRouter);
   return app;
 }
 
@@ -105,6 +115,11 @@ export async function seedAuth(
 
 /** Wipe all mutable tables in FK-safe order. */
 export async function cleanDb(db: PrismaClient): Promise<void> {
+  await db.auditLog.deleteMany();
+  await db.outboundWebhookDelivery.deleteMany();
+  await db.outboundWebhook.deleteMany();
+  await db.subscription.deleteMany();
+  await db.apiKey.deleteMany();
   await db.notification.deleteMany();
   await db.comment.deleteMany();
   await db.task.deleteMany();

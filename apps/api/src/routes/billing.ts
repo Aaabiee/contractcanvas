@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { stripe as stripeConfig } from '../config.js';
 import { protect, requireEmailVerified } from '../middleware/auth.js';
 import prisma from '../prisma.js';
+import logger from '../lib/logger.js';
 
 export const router = Router();
 
@@ -16,13 +17,13 @@ if (STRIPE_KEY && !STRIPE_KEY.includes('CONTRA_')) {
   try {
     const apiVersion = (process.env.STRIPE_API_VERSION || undefined) as StripeApiVersion;
     stripe = new Stripe(STRIPE_KEY, { apiVersion });
-    console.log('[billing] Stripe client initialized.');
+    logger.info('[billing] Stripe client initialized.');
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error(`[billing] Failed to initialize Stripe: ${message}`);
+    logger.error(`[billing] Failed to initialize Stripe: ${message}`);
   }
 } else {
-  console.warn('[billing] STRIPE_SECRET_KEY is not set or is a placeholder. Billing routes will be disabled.');
+  logger.warn('[billing] STRIPE_SECRET_KEY is not set or is a placeholder. Billing routes will be disabled.');
 }
 
 const CreateIntentSchema = z.object({
@@ -31,12 +32,30 @@ const CreateIntentSchema = z.object({
   contractId:   z.string().cuid().optional(),
 });
 
+const SubscribeSchema = z.object({
+  tier:    z.enum(['STARTER', 'PROFESSIONAL']),
+  priceId: z.string().min(1),
+});
+
 const isStripeActive = (req: Request, res: Response, next: NextFunction) => {
   if (!stripe) {
     return res.status(501).json({ error: 'Billing is not configured on this server.' });
   }
   next();
 };
+
+export async function requireActiveSubscription(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const organizationId = req.user?.organizationId;
+  if (!organizationId) { res.status(403).json({ error: 'no_org' }); return; }
+  const sub = await prisma.subscription.findFirst({
+    where: { organizationId, status: { in: ['active', 'trialing'] } },
+  });
+  if (!sub) {
+    res.status(402).json({ error: 'subscription_required', upgradeUrl: '/settings/billing' });
+    return;
+  }
+  next();
+}
 
 router.post('/invoice', protect, requireEmailVerified, isStripeActive, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -101,6 +120,120 @@ router.get('/invoices', protect, async (req: Request, res: Response, next: NextF
   }
 });
 
+router.post('/subscribe', protect, async (req: Request, res: Response, next: NextFunction) => {
+  if (!stripe) {
+    res.status(501).json({ error: 'Billing is not configured on this server.' });
+    return;
+  }
+
+  try {
+    const validation = SubscribeSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
+      return;
+    }
+
+    const { tier, priceId } = validation.data;
+    const organizationId = req.user!.organizationId;
+
+    if (!organizationId) {
+      res.status(403).json({ error: 'No active organization.' });
+      return;
+    }
+
+    let billingProfile = await prisma.billingProfile.findFirst({ where: { organizationId } });
+    let stripeCustomerId = billingProfile?.stripeCustomerId ?? null;
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email:    req.user!.email,
+        metadata: { organizationId },
+      });
+      stripeCustomerId = customer.id;
+      if (billingProfile) {
+        await prisma.billingProfile.update({
+          where: { id: billingProfile.id },
+          data:  { stripeCustomerId },
+        });
+      } else {
+        await prisma.billingProfile.create({
+          data: { organizationId, stripeCustomerId },
+        });
+      }
+    }
+
+    const sub = await stripe.subscriptions.create({
+      customer:         stripeCustomerId,
+      items:            [{ price: priceId }],
+      payment_behavior: 'default_incomplete',
+      expand:           ['latest_invoice.payment_intent'],
+    });
+
+    await prisma.subscription.upsert({
+      where:  { stripeSubscriptionId: sub.id },
+      create: {
+        organizationId,
+        tier,
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId,
+        status:      'trialing',
+        trialEndsAt: sub.trial_end !== null ? new Date(sub.trial_end * 1000) : null,
+      },
+      update: {
+        tier,
+        stripeCustomerId,
+        status:      'trialing',
+        trialEndsAt: sub.trial_end !== null ? new Date(sub.trial_end * 1000) : null,
+      },
+    });
+
+    const clientSecret = (sub.latest_invoice as any)?.payment_intent?.client_secret ?? null;
+    res.status(201).json({ subscriptionId: sub.id, clientSecret });
+  } catch (error: any) {
+    if (error && typeof error === 'object' && 'type' in error) {
+      res.status(400).json({ error: String(error.message ?? error) });
+      return;
+    }
+    next(error);
+  }
+});
+
+router.post('/portal-session', protect, async (req: Request, res: Response, next: NextFunction) => {
+  if (!stripe) {
+    res.status(501).json({ error: 'Billing is not configured on this server.' });
+    return;
+  }
+
+  try {
+    const organizationId = req.user!.organizationId;
+    if (!organizationId) {
+      res.status(403).json({ error: 'No active organization.' });
+      return;
+    }
+
+    const billingProfile = await prisma.billingProfile.findFirst({ where: { organizationId } });
+    const stripeCustomerId = billingProfile?.stripeCustomerId ?? null;
+
+    if (!stripeCustomerId) {
+      res.status(400).json({ error: 'no_billing_profile' });
+      return;
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer:   stripeCustomerId,
+      return_url: (process.env.FRONTEND_URL ?? '') + '/settings/billing',
+    });
+
+    res.json({ url: session.url });
+  } catch (error: any) {
+    if (error && typeof error === 'object' && 'type' in error) {
+      res.status(400).json({ error: String(error.message ?? error) });
+      return;
+    }
+    next(error);
+  }
+});
+
 const WH_SECRET = stripeConfig.webhookSecret ?? '';
 router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
   if (!stripe || !WH_SECRET || WH_SECRET.includes('YOUR_')) {
@@ -152,6 +285,82 @@ router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async
               currency:        pi.currency,
               status:          'FAILED',
             },
+          });
+        }
+        break;
+      }
+
+      case 'customer.subscription.created': {
+        const sub = event.data.object as Stripe.Subscription & { current_period_start: number; current_period_end: number };
+        const organizationId = sub.metadata?.organizationId;
+        if (organizationId) {
+          await prisma.subscription.upsert({
+            where:  { stripeSubscriptionId: sub.id },
+            create: {
+              organizationId,
+              tier:                 'STARTER',
+              stripeSubscriptionId: sub.id,
+              stripeCustomerId:     typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
+              status:               sub.status as any,
+              trialEndsAt:          sub.trial_end !== null ? new Date(sub.trial_end * 1000) : null,
+              currentPeriodStart:   new Date(sub.current_period_start * 1000),
+              currentPeriodEnd:     new Date(sub.current_period_end * 1000),
+              cancelAtPeriodEnd:    sub.cancel_at_period_end,
+            },
+            update: {
+              status:             sub.status as any,
+              trialEndsAt:        sub.trial_end !== null ? new Date(sub.trial_end * 1000) : null,
+              currentPeriodStart: new Date(sub.current_period_start * 1000),
+              currentPeriodEnd:   new Date(sub.current_period_end * 1000),
+              cancelAtPeriodEnd:  sub.cancel_at_period_end,
+            },
+          });
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const sub = event.data.object as Stripe.Subscription & { current_period_start: number; current_period_end: number };
+        await prisma.subscription.updateMany({
+          where: { stripeSubscriptionId: sub.id },
+          data:  {
+            status:             sub.status as any,
+            currentPeriodStart: new Date(sub.current_period_start * 1000),
+            currentPeriodEnd:   new Date(sub.current_period_end * 1000),
+            cancelAtPeriodEnd:  sub.cancel_at_period_end,
+          },
+        });
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object as Stripe.Subscription;
+        await prisma.subscription.updateMany({
+          where: { stripeSubscriptionId: sub.id },
+          data:  { status: 'canceled' },
+        });
+        break;
+      }
+
+      case 'invoice.payment_succeeded': {
+        const inv = event.data.object as any;
+        const subId = typeof inv.subscription === 'string' ? inv.subscription : (inv.subscription as any)?.id;
+        if (subId) {
+          await prisma.subscription.updateMany({
+            where: { stripeSubscriptionId: subId },
+            data:  { status: 'active' },
+          });
+        }
+        break;
+      }
+
+      case 'invoice.payment_failed': {
+        const inv = event.data.object as any;
+        const subId = typeof inv.subscription === 'string' ? inv.subscription : (inv.subscription as any)?.id;
+        if (subId) {
+          await prisma.subscription.updateMany({
+            where: { stripeSubscriptionId: subId },
+            data:  { status: 'past_due' },
           });
         }
         break;

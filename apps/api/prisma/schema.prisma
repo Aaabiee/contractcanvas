@@ -85,20 +85,36 @@ enum NotificationType {
   BILLING
 }
 
+enum PlanTier {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  unpaid
+}
+
 // ===================== Core tenancy & users =====================
 model Organization {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id             String    @id @default(cuid())
+  name           String
+  slug           String    @unique
+  retentionDays  Int       @default(2555)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   members            OrganizationMember[]
   matters            Matter[]
   clauses            Clause[]
   apiKeys            ApiKey[]
   webhooks           WebhookEndpoint[]
+  outboundWebhooks   OutboundWebhook[]
   contracts          Contract[]
   tags               Tag[]
   documents          Document[]
@@ -112,6 +128,7 @@ model Organization {
   shareLinks         ShareLink[]
   notifications      Notification[]
   auditLogs          AuditLog[]
+  subscriptions      Subscription[]
 
   @@index([deletedAt])
 }
@@ -140,14 +157,17 @@ model User {
   name             String?
   role             Role                 @default(CLIENT)
   avatarUrl        String?
-  emailVerifiedAt  DateTime?
-  verifyToken      String?              @unique
-  verifyTokenExp   DateTime?
-  resetToken       String?              @unique
-  resetTokenExp    DateTime?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  deletedAt        DateTime?
+  emailVerifiedAt   DateTime?
+  verifyToken       String?              @unique
+  verifyTokenExp    DateTime?
+  resetToken        String?              @unique
+  resetTokenExp     DateTime?
+  tosAcceptedAt     DateTime?
+  privacyAcceptedAt DateTime?
+  tosVersion        String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  deletedAt         DateTime?
   organizations    OrganizationMember[]
   ownedMatters     Matter[]             @relation("MatterOwner")
   matterLinks      MatterParticipant[]
@@ -530,15 +550,17 @@ model ApiKey {
   id             String    @id @default(cuid())
   organizationId String
   name           String
-  hashedKey      String    @unique // Store a hash, not the raw key
-  // prefix         String   @unique // Store first few chars for identification
+  hashedKey      String    @unique
+  prefix         String
   createdAt      DateTime  @default(now())
   lastUsedAt     DateTime?
+  revokedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([lastUsedAt])
+  @@index([revokedAt])
 }
 
 model WebhookEndpoint {
@@ -570,6 +592,61 @@ model WebhookDelivery {
 
   @@index([endpointId])
   @@index([eventType])
+}
+
+model OutboundWebhook {
+  id             String    @id @default(cuid())
+  organizationId String
+  url            String
+  secret         String
+  events         String[]
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries   OutboundWebhookDelivery[]
+
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model OutboundWebhookDelivery {
+  id         String   @id @default(cuid())
+  webhookId  String
+  event      String
+  payload    Json
+  statusCode Int?
+  success    Boolean  @default(false)
+  attempts   Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  webhook OutboundWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([event])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String
+  tier                 PlanTier           @default(STARTER)
+  status               SubscriptionStatus @default(trialing)
+  stripeSubscriptionId String?            @unique
+  stripeCustomerId     String?
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([stripeCustomerId])
 }
 
 // ===================== Notifications & audit =====================

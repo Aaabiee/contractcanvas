@@ -1,4 +1,3 @@
-// apps/api/src/routes/index.ts
 export { default as auth } from './auth.js';
 export { default as documents } from './documents.js';
 export { default as matters } from './matters.js';
@@ -14,3 +13,8 @@ export { default as search } from './search.js';
 export { default as reminders } from './reminders.js';
 export { router as shareLinks, shareTokenRouter } from './share-links.js';
 export { default as events } from './events.js';
+export { default as auditLogs } from './audit-logs.js';
+export { default as apiKeys } from './api-keys.js';
+export { default as webhooks } from './webhooks.js';
+export { default as analytics } from './analytics.js';
+export { default as users } from './users.js';

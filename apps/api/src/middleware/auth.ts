@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
+import crypto from 'node:crypto';
 import type { $Enums } from '@prisma/client';
 import { isBlacklisted } from '../lib/redis.js';
+import { logger } from '../lib/logger.js';
+import prisma from '../prisma.js';
 
 const ISSUER    = process.env.AUTH_ISSUER?.replace(/\/+$/, '');
 const AUDIENCE  = process.env.AUTH_AUDIENCE;
@@ -36,10 +39,10 @@ let jwks: ReturnType<typeof createRemoteJWKSet> | undefined = undefined;
 if (JWKS_URI) {
   try {
     jwks = createRemoteJWKSet(new URL(JWKS_URI), { timeoutDuration: 5_000 });
-    console.log(`[auth] Using remote JWKS: ${JWKS_URI}`);
+    logger.info({ jwksUri: JWKS_URI }, 'Using remote JWKS');
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    console.warn(`[auth] Failed to initialize JWKS from ${JWKS_URI}:`, message);
+    logger.warn({ jwksUri: JWKS_URI, err: message }, 'Failed to initialize JWKS');
   }
 }
 
@@ -173,32 +176,67 @@ function getBearer(req: Request): string | null {
 export async function protect(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const token = getBearer(req);
-    if (!token) {
-      res.status(401).json({ error: 'unauthorized', message: 'Missing Bearer token' });
+
+    if (token) {
+      const payload = await verifyToken(token);
+      const user    = toUser(payload);
+
+      if (!user.id) {
+        res.status(401).json({ error: 'unauthorized', message: 'Invalid token (no subject)' });
+        return;
+      }
+
+      const jti = typeof (payload as any).jti === 'string' ? (payload as any).jti : null;
+      if (jti && await isBlacklisted(jti)) {
+        res.status(401).json({ error: 'unauthorized', message: 'Token has been revoked' });
+        return;
+      }
+
+      user.organizationId = resolveOrganizationId(req, user);
+      req.user = user;
+      next();
       return;
     }
 
-    const payload = await verifyToken(token);
-    const user    = toUser(payload);
+    const rawApiKey = req.header('x-api-key');
+    if (rawApiKey) {
+      const hashedKey = crypto.createHash('sha256').update(rawApiKey).digest('hex');
 
-    if (!user.id) {
-      res.status(401).json({ error: 'unauthorized', message: 'Invalid token (no subject)' });
+      const apiKey = await prisma.apiKey.findFirst({
+        where: { hashedKey, revokedAt: null },
+      });
+
+      if (!apiKey) {
+        res.status(401).json({ error: 'unauthorized', message: 'Invalid API key' });
+        return;
+      }
+
+      prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+
+      const membership = await prisma.organizationMember.findFirst({
+        where:   { organizationId: apiKey.organizationId },
+        include: { organization: { select: { id: true, name: true, slug: true } } },
+      });
+
+      const organizations: OrgMembership[] = membership
+        ? [{ id: membership.organization.id, name: membership.organization.name, slug: membership.organization.slug, role: membership.role }]
+        : [];
+
+      req.user = {
+        id:             apiKey.organizationId,
+        roles:          [],
+        organizations,
+        organizationId: apiKey.organizationId,
+      };
+
+      next();
       return;
     }
 
-    const jti = typeof (payload as any).jti === 'string' ? (payload as any).jti : null;
-    if (jti && await isBlacklisted(jti)) {
-      res.status(401).json({ error: 'unauthorized', message: 'Token has been revoked' });
-      return;
-    }
-
-    user.organizationId = resolveOrganizationId(req, user);
-
-    req.user = user;
-    next();
+    res.status(401).json({ error: 'unauthorized', message: 'Missing Bearer token' });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Invalid or expired token';
-    console.warn('[auth] verify failed:', message);
+    logger.warn({ err: message }, 'Token verification failed');
     res.status(401).json({ error: 'unauthorized', message });
   }
 }

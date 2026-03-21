@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
+import { writeAuditLog } from '../lib/audit.js';
+import { checkMatterLimit } from '../services/usage.service.js';
 
 export const router = Router();
 
@@ -96,12 +98,14 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const { title, description, status } = validation.data;
+    await checkMatterLimit(organizationId);
     const newMatter = await prisma.matter.create({
       data: { title, description, status, ownerId, organizationId },
       include: {
         owner: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
+    await writeAuditLog({ organizationId, actorId: ownerId, entity: 'Matter', entityId: newMatter.id, action: 'CREATE', after: newMatter, ip: req.ip, userAgent: req.headers['user-agent'] });
     res.status(201).json(newMatter);
   } catch (error) {
     next(error);
@@ -130,6 +134,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
       where: { id },
       data:  validation.data,
     });
+    await writeAuditLog({ organizationId, actorId: req.user?.id, entity: 'Matter', entityId: id, action: 'UPDATE', before: existing, after: updatedMatter, ip: req.ip, userAgent: req.headers['user-agent'] });
     res.json(updatedMatter);
   } catch (error) {
     next(error);
@@ -150,6 +155,7 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     await prisma.matter.update({ where: { id }, data: { deletedAt: new Date() } });
+    await writeAuditLog({ organizationId, actorId: req.user?.id, entity: 'Matter', entityId: id, action: 'DELETE', before: existing, ip: req.ip, userAgent: req.headers['user-agent'] });
     res.status(204).send();
   } catch (error) {
     next(error);

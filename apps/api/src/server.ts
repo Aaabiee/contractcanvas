@@ -1,3 +1,13 @@
+import * as Sentry from '@sentry/node';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn:              process.env.SENTRY_DSN,
+    environment:      process.env.NODE_ENV ?? 'development',
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  });
+}
+
 import express from 'express';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
@@ -7,7 +17,7 @@ import { prisma } from './prisma.js';
 import { app as appCfg, db } from './config.js';
 import { logger } from './lib/logger.js';
 
-import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter, events } from './routes/index.js';
+import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter, events, auditLogs, apiKeys, webhooks, analytics, users } from './routes/index.js';
 import healthRouter from './routes/health.js';
 import { startReminderScheduler } from './lib/reminder-scheduler.js';
 import { protect } from './middleware/auth.js';
@@ -81,10 +91,19 @@ app.use('/api/reminders',     protect, reminders);
 app.use('/api/share-links',   shareLinks);
 app.use('/api/share',         shareTokenRouter);
 app.use('/api/events',        events);
+app.use('/api/analytics',     protect, analytics);
+app.use('/api/users',         protect, users);
+app.use('/api/organizations/:orgId/api-keys',    protect, apiKeys);
+app.use('/api/organizations/:orgId/webhooks',    protect, webhooks);
+app.use('/api/organizations/:orgId/audit-logs',  protect, auditLogs);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' });
 });
+
+if (process.env.SENTRY_DSN) {
+  app.use(Sentry.expressErrorHandler());
+}
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ err }, 'Unhandled error');

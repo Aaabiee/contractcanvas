@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
 import { revokeAllUserSessions } from '../lib/session.js';
+import { checkMemberLimit } from '../services/usage.service.js';
 
 import { Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
@@ -187,6 +188,8 @@ router.post(
       if (!userExists) {
         return res.status(404).json({ error: 'User to be added not found' });
       }
+
+      await checkMemberLimit(orgId);
 
       const newMember = await prisma.organizationMember.create({
         data: {

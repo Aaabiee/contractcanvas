@@ -1,5 +1,6 @@
 import {
   ApplicationConfig,
+  ErrorHandler,
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection
 } from '@angular/core';
@@ -8,6 +9,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { jwtInterceptor } from './interceptors/jwt.interceptor';
 import { errorInterceptor } from './interceptors/error.interceptor';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import * as Sentry from '@sentry/angular';
 
 import { routes } from './app.routes';
 
@@ -19,6 +21,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(
       withInterceptors([jwtInterceptor, errorInterceptor])
     ),
-    provideAnimations()
+    provideAnimations(),
+    { provide: ErrorHandler, useValue: Sentry.createErrorHandler() },
   ]
 };
