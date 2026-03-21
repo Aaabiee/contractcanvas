@@ -3,7 +3,7 @@ export { default as documents } from './documents.js';
 export { default as matters } from './matters.js';
 export { default as contracts } from './contracts.js';
 export { default as organizations } from './organizations.js';
-export { default as signatures } from './signatures.js';
+export { default as signatures, signatureWebhookRouter } from './signatures.js';
 export { default as billing } from './billing.js';
 export { default as tasks } from './tasks.js';
 export { default as comments } from './comments.js';
