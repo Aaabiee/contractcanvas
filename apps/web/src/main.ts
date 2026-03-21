@@ -1,3 +1,5 @@
+/// <reference types="@angular/localize" />
+
 import * as Sentry from '@sentry/angular';
 
 const SENTRY_DSN = (window as any).__SENTRY_DSN__ || '';

@@ -44,9 +44,13 @@
     "@angular/build": "^20.3.6",
     "@angular/cli": "^20.3.6",
     "@angular/compiler-cli": "^20.3.0",
+    "@angular/localize": "^20.3.7",
+    "@angular/platform-browser-dynamic": "^21.2.5",
     "@briebug/jest-schematic": "^6.0.0",
     "@types/dompurify": "^3.0.5",
     "@types/jest": "^30.0.0",
+    "jest": "^30.3.0",
+    "jest-preset-angular": "^14.6.0",
     "typescript": "~5.9.2"
   }
 }
