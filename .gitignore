@@ -21,4 +21,3 @@ apps/api/prisma/migrations
 .claude
 
 # Local planning documents
-PRODUCTION_ROADMAP.md
