@@ -1,3 +1,8 @@
+---
+layout: default
+title: Architecture
+---
+
 # ContractCanvas — Architecture
 
 ## System Overview

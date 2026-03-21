@@ -1,0 +1,7 @@
+title: "ContractCanvas"
+description: "Developer documentation for the ContractCanvas CLM platform"
+theme: jekyll-theme-cayman
+baseurl: "/contractcanvas"
+url: "https://github.io"
+markdown: kramdown
+highlighter: rouge
