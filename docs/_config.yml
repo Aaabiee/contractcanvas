@@ -3,32 +3,42 @@ description: Developer documentation for the ContractCanvas CLM platform
 baseurl: /contractcanvas
 url: https://aaabiee.github.io
 
-remote_theme: rundocs/jekyll-rtd-theme@2.0.10
+remote_theme: carlosperate/jekyll-theme-rtd@v1.2.0
 
 markdown: kramdown
 highlighter: rouge
 
-readme_index:
-  with_hierarchies: true
-
-# Sidebar table of contents depth
-toc:
-  selectors: "h2,h3"
-
-# Footer
-gh_edit_link: true
-gh_edit_link_text: Edit this page on GitHub
-gh_edit_repository: https://github.com/Aaabiee/contractcanvas
-gh_edit_branch: main
-gh_edit_source: docs
-gh_edit_view_mode: tree
-
-# Search
-search_enabled: true
-
-plugins:
-  - jemoji
-  - jekyll-avatar
+# RTD theme sidebar navigation (built from pages with title frontmatter)
+rtd_nav:
+  - title: Home
+    url: /
+  - title: Getting Started
+    url: /getting-started
+  - title: Architecture
+    url: /ARCHITECTURE
+  - title: API Reference
+    url: /api-reference
+  - title: Frontend Guide
+    url: /frontend-guide
+  - title: Security
+    url: /security
+  - title: Deployment
+    url: /deployment
+  - title: E-Signatures
+    url: /e-signatures
+  - title: Testing
+    url: /testing
+  - title: Contributing
+    url: /contributing
+  - title: Legal
+    url: /legal/
+    children:
+      - title: Privacy Policy
+        url: /legal/PRIVACY_POLICY
+      - title: Terms of Service
+        url: /legal/TERMS_OF_SERVICE
+      - title: DPA
+        url: /legal/DPA
 
 exclude:
   - Gemfile
