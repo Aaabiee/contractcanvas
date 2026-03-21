@@ -101,6 +101,7 @@ services:
       STRIPE_SECRET_KEY:      ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET:  ${STRIPE_WEBHOOK_SECRET:-}
       REDIS_URL:              redis://redis:6379
+    stop_grace_period: 35s
     ports:
       - "${API_PORT:-3333}:3333"
     healthcheck:

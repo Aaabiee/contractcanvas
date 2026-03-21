@@ -1,12 +1,14 @@
 import express from 'express';
 import cors from 'cors';
-import morgan from 'morgan';
+import { pinoHttp } from 'pino-http';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
-import { app as appCfg, DATABASE_URL as pgUrl, db } from './config.js';
+import { app as appCfg, db } from './config.js';
+import { logger } from './lib/logger.js';
 
 import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter, events } from './routes/index.js';
+import healthRouter from './routes/health.js';
 import { startReminderScheduler } from './lib/reminder-scheduler.js';
 import { protect } from './middleware/auth.js';
 import { applySecurityHeaders } from './middleware/security.js';
@@ -31,7 +33,7 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(morgan('dev'));
+app.use(pinoHttp({ logger }));
 app.use(cookieParser());
 
 const authLimiter = rateLimit({
@@ -57,13 +59,7 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/auth', authLimiter, auth);
 
-app.get('/health', (_req, res) => {
-  res.json({
-    ok:  true,
-    env: appCfg.env,
-    ...(appCfg.env !== 'production' ? { db: { host: db.host, name: db.name } } : {}),
-  });
-});
+app.use('/health', healthRouter);
 
 app.get('/', (_req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -91,7 +87,7 @@ app.use((_req, res) => {
 });
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('[ErrorHandler]', err);
+  logger.error({ err }, 'Unhandled error');
   const statusCode = (err as any).statusCode || 500;
   res.status(statusCode).json({
     error:   (err as any).code || 'internal_error',
@@ -105,24 +101,24 @@ if (process.env['NODE_ENV'] !== 'test') {
 }
 
 const server = app.listen(port, () => {
-  console.log(`[API] Server listening on http://localhost:${port} (DB: ${pgUrl.replace(db.password, '****')})`);
+  logger.info({ port, db: { host: db.host, name: db.name } }, 'API server listening');
 });
 
 async function shutdown(signal: string) {
-  console.log(`\n${signal} received, shutting down gracefully...`);
+  logger.info({ signal }, 'Shutdown signal received');
   server.close(async () => {
-    console.log('HTTP server closed.');
+    logger.info('HTTP server closed');
     try {
       await prisma.$disconnect();
-      console.log('Prisma disconnected.');
+      logger.info('Prisma disconnected');
     } catch (e) {
-      console.error('Error disconnecting Prisma:', e);
+      logger.error({ err: e }, 'Error disconnecting Prisma');
     } finally {
       process.exit(0);
     }
   });
   setTimeout(() => {
-    console.error('Graceful shutdown timed out. Forcing exit.');
+    logger.error('Graceful shutdown timed out — forcing exit');
     process.exit(1);
   }, 10_000);
 }

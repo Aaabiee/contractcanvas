@@ -33,11 +33,16 @@ COPY --from=builder /app/apps/api/dist          ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma        ./apps/api/prisma
 COPY --from=builder /app/node_modules/.prisma   ./node_modules/.prisma
 
+RUN apk add --no-cache curl
+
 USER appuser
 
 ENV NODE_ENV=production
 ENV PORT=3333
 
 EXPOSE 3333
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3333/health || exit 1
 
 CMD ["node", "apps/api/dist/server.js"]

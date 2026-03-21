@@ -1,14 +1,3 @@
-/**
- * Shared helpers for backend integration tests.
- *
- * buildApp()  – returns an Express app wired with all real routes + protect
- *               middleware, but no rate-limiting or helmet (test overhead).
- *
- * seedAuth()  – registers a unique user+org via the real auth route and
- *               returns { token, userId, orgId, authHeader, orgHeader }.
- *
- * cleanDb()   – wipes all mutable tables in FK-safe order; call in afterEach.
- */
 
 import express, { type Express } from 'express';
 import request from 'supertest';
@@ -27,6 +16,7 @@ import searchRouter                        from '../../routes/search.js';
 import remindersRouter                     from '../../routes/reminders.js';
 import { router as shareLinksRouter, shareTokenRouter } from '../../routes/share-links.js';
 import eventsRouter from '../../routes/events.js';
+import healthRouter from '../../routes/health.js';
 import { PrismaClient }                   from '@prisma/client';
 
 export function buildApp(): Express {
@@ -48,6 +38,7 @@ export function buildApp(): Express {
   app.use('/api/share-links', shareLinksRouter);
   app.use('/api/share',       shareTokenRouter);
   app.use('/api/events',      eventsRouter);
+  app.use('/health',          healthRouter);
   return app;
 }
 
