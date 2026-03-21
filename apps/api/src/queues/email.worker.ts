@@ -26,8 +26,8 @@ export function startEmailWorker(): Worker | null {
         await sendAdminAlert({
           to:       adminEmail,
           subject:  `[ContractCanvas] Dead-letter: email job ${job.id} failed`,
-          textBody: `Job ${job.id} failed after ${job.attemptsMade} attempts.\n\nError: ${err.message}\n\nData: ${JSON.stringify(job.data, null, 2)}`,
-          htmlBody: `<p>Job ${job.id} failed after ${job.attemptsMade} attempts.</p><pre>${err.message}</pre>`,
+          textBody: `Job ${job.id} failed after ${job.attemptsMade} attempts.\n\nRecipient: ${job.data.to}\nSubject: ${job.data.subject}\n\nError: ${err.message}`,
+          htmlBody: `<p>Job ${job.id} failed after ${job.attemptsMade} attempts.</p><p>To: ${job.data.to}</p><p>Subject: ${job.data.subject}</p><pre>${err.message}</pre>`,
         }).catch(() => {});
       }
     }

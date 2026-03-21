@@ -181,6 +181,18 @@ router.post(
       }
       const { userId, role } = validation.data;
 
+      if (role === 'ADMIN' && inviterMembership.role !== 'OWNER') {
+        return res.status(403).json({ error: 'Only the organization owner can assign the ADMIN role' });
+      }
+      if (role === 'ADMIN') {
+        const adminCount = await prisma.organizationMember.count({
+          where: { organizationId: orgId, role: 'ADMIN' },
+        });
+        if (adminCount >= 2) {
+          return res.status(400).json({ error: 'Maximum of 2 admins per organization' });
+        }
+      }
+
       const userExists = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true },
@@ -250,6 +262,21 @@ router.patch(
       }
       const { role } = validation.data;
 
+      if (role === 'ADMIN' && updaterMembership.role !== 'OWNER') {
+        return res.status(403).json({ error: 'Only the organization owner can assign the ADMIN role' });
+      }
+      if (role === 'OWNER') {
+        return res.status(400).json({ error: 'Use the /transfer-ownership endpoint to transfer ownership' });
+      }
+      if (role === 'ADMIN') {
+        const adminCount = await prisma.organizationMember.count({
+          where: { organizationId: orgId, role: 'ADMIN' },
+        });
+        if (adminCount >= 2) {
+          return res.status(400).json({ error: 'Maximum of 2 admins per organization' });
+        }
+      }
+
       const updatedMember = await prisma.organizationMember.update({
         where: { id: memberId, organizationId: orgId },
         data: { role: role as OrgRole },
@@ -314,6 +341,63 @@ router.delete(
       if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
         return res.status(404).json({ error: 'Member not found' });
       }
+      next(error);
+    }
+  }
+);
+
+const TransferOwnershipSchema = z.object({
+  newOwnerUserId: z.string().cuid({ message: 'Valid user ID required' }),
+});
+
+router.post(
+  '/:orgId/transfer-ownership',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const { orgId } = req.params;
+
+      const currentMembership = await prisma.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId: orgId, userId: req.user.id } },
+        select: { id: true, role: true },
+      });
+      if (!currentMembership || currentMembership.role !== 'OWNER') {
+        return res.status(403).json({ error: 'Only the current owner can transfer ownership' });
+      }
+
+      const validation = TransferOwnershipSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
+      }
+      const { newOwnerUserId } = validation.data;
+
+      if (newOwnerUserId === req.user.id) {
+        return res.status(400).json({ error: 'Cannot transfer ownership to yourself' });
+      }
+
+      const targetMembership = await prisma.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId: orgId, userId: newOwnerUserId } },
+        select: { id: true },
+      });
+      if (!targetMembership) {
+        return res.status(404).json({ error: 'Target user is not a member of this organization' });
+      }
+
+      await prisma.$transaction([
+        prisma.organizationMember.update({
+          where: { id: targetMembership.id },
+          data: { role: 'OWNER' },
+        }),
+        prisma.organizationMember.update({
+          where: { id: currentMembership.id },
+          data: { role: 'ADMIN' },
+        }),
+      ]);
+
+      res.json({ ok: true, message: 'Ownership transferred successfully' });
+    } catch (error) {
       next(error);
     }
   }

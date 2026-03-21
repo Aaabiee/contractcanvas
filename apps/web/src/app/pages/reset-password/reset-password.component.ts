@@ -80,6 +80,8 @@ export class ResetPasswordComponent implements OnInit {
     this.token = this.route.snapshot.queryParamMap.get('token') ?? '';
     if (!this.token) {
       this.errorMessage.set('Invalid or missing reset token. Please request a new link.');
+    } else {
+      window.history.replaceState({}, '', '/reset-password');
     }
   }
 

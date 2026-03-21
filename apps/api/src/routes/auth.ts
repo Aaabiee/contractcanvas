@@ -15,6 +15,7 @@ import {
   REFRESH_COOKIE,
   REFRESH_COOKIE_OPTS,
 } from '../lib/session.js';
+import { checkLoginAllowed, recordFailedAttempt, clearFailedAttempts } from '../lib/login-guard.js';
 import { sendEmail, type SendEmailOpts } from '../services/email.service.js';
 import { emailQueue } from '../queues/index.js';
 
@@ -175,12 +176,17 @@ const ResetPasswordSchema = z.object({
     .regex(/[^A-Za-z0-9]/, { message: 'Password must contain at least one special character' }),
 });
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
 async function sendVerificationEmail(email: string, firstName: string, rawToken: string) {
-  const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/verify-email?token=${rawToken}`;
+  const safeName = escapeHtml(firstName);
+  const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/verify-email?token=${encodeURIComponent(rawToken)}`;
   await enqueueEmail({
     to:       email,
     subject:  'Verify your ContractCanvas email',
-    htmlBody: `<p>Hi ${firstName},</p><p>Click the link below to verify your email address. This link expires in 24 hours.</p><p><a href="${link}">${link}</a></p>`,
+    htmlBody: `<p>Hi ${safeName},</p><p>Click the link below to verify your email address. This link expires in 24 hours.</p><p><a href="${link}">${link}</a></p>`,
     textBody: `Hi ${firstName},\n\nVerify your email: ${link}\n\nThis link expires in 24 hours.`,
   });
 }
@@ -327,10 +333,22 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     }
     const { email, password } = parsed.data;
 
+    const guard = await checkLoginAllowed(email);
+    if (!guard.allowed) {
+      return res.status(429).json({
+        error: 'account_locked',
+        message: `Too many failed attempts. Try again in ${guard.retryAfterSeconds} seconds.`,
+        retryAfterSeconds: guard.retryAfterSeconds,
+      });
+    }
+
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      await recordFailedAttempt(email);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+
+    await clearFailedAttempts(email);
 
     const payload = await buildTokenPayload(user.id, { id: user.id, email: user.email, role: user.role, emailVerifiedAt: user.emailVerifiedAt });
     const token   = signAccessToken(payload);
@@ -534,11 +552,12 @@ router.post('/forgot-password', async (req: Request, res: Response, next: NextFu
         data:  { resetToken: hashedToken, resetTokenExp },
       });
 
-      const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/reset-password?token=${rawToken}`;
+      const safeName = escapeHtml(user.firstName);
+      const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/reset-password?token=${encodeURIComponent(rawToken)}`;
       await enqueueEmail({
         to:       user.email,
         subject:  'Reset your ContractCanvas password',
-        htmlBody: `<p>Hi ${user.firstName},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${link}">${link}</a></p><p>If you did not request a password reset, you can ignore this email.</p>`,
+        htmlBody: `<p>Hi ${safeName},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${link}">${link}</a></p><p>If you did not request a password reset, you can ignore this email.</p>`,
         textBody: `Hi ${user.firstName},\n\nReset your password: ${link}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.`,
       });
     }

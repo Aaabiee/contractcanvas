@@ -66,6 +66,8 @@ export class VerifyEmailComponent implements OnInit {
       return;
     }
 
+    window.history.replaceState({}, '', '/verify-email');
+
     this.auth.verifyEmail(token).subscribe({
       next: res => {
         if (res.token) {

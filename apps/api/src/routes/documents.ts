@@ -91,10 +91,11 @@ router.post('/upload', requireEmailVerified, requireActiveSubscription, singleFi
     const storageKey    = `orgs/${organizationId}/matters/${metadata.matterId}/${uniqueSuffix}${fileExtension ? '.' + fileExtension : ''}`;
 
     await s3.send(new PutObjectCommand({
-      Bucket:      s3Config.bucket,
-      Key:         storageKey,
-      Body:        file.buffer,
-      ContentType: file.mimetype,
+      Bucket:               s3Config.bucket,
+      Key:                  storageKey,
+      Body:                 file.buffer,
+      ContentType:          file.mimetype,
+      ServerSideEncryption: 'AES256',
     }));
 
     const document = await prisma.document.create({

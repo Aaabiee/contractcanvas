@@ -10,12 +10,12 @@ const ALLOWED_EVENTS = new Set([
   'signature.completed', 'task.completed',
 ]);
 
-const PRIVATE_IP_RE = /^(127\.|10\.|192\.168\.|169\.254\.)|^::1$/;
+const PRIVATE_IP_RE = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)|^::1$|^0\.|^fc|^fd|^fe80:|^localhost$/i;
 
 function isPrivateUrl(url: string): boolean {
   try {
     const { hostname } = new URL(url);
-    return PRIVATE_IP_RE.test(hostname);
+    return PRIVATE_IP_RE.test(hostname) || hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal');
   } catch {
     return true;
   }

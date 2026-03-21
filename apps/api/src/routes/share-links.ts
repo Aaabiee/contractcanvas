@@ -117,7 +117,7 @@ shareTokenRouter.get('/:token', async (req: Request, res: Response, next: NextFu
       return res.status(410).json({ error: 'Share link has expired' });
     }
 
-    const resource = await fetchResource(link.resourceType as ResourceType, link.resourceId);
+    const resource = await fetchResource(link.resourceType as ResourceType, link.resourceId, link.organizationId);
     if (!resource) {
       return res.status(404).json({ error: 'Resource no longer exists' });
     }
@@ -149,21 +149,21 @@ async function verifyResourceBelongsToOrg(
   }
 }
 
-async function fetchResource(type: ResourceType, id: string): Promise<object | null> {
+async function fetchResource(type: ResourceType, id: string, organizationId: string): Promise<object | null> {
   switch (type) {
     case 'contract':
       return prisma.contract.findFirst({
-        where:  { id, deletedAt: null },
+        where:  { id, organizationId, deletedAt: null },
         select: { id: true, title: true, status: true, createdAt: true },
       });
     case 'matter':
       return prisma.matter.findFirst({
-        where:  { id, deletedAt: null },
+        where:  { id, organizationId, deletedAt: null },
         select: { id: true, title: true, status: true, createdAt: true },
       });
     case 'document':
       return prisma.document.findFirst({
-        where:  { id, deletedAt: null },
+        where:  { id, organizationId, deletedAt: null },
         select: { id: true, filename: true, mimeType: true, createdAt: true },
       });
   }

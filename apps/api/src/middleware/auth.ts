@@ -235,9 +235,9 @@ export async function protect(req: Request, res: Response, next: NextFunction): 
 
     res.status(401).json({ error: 'unauthorized', message: 'Missing Bearer token' });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Invalid or expired token';
-    logger.warn({ err: message }, 'Token verification failed');
-    res.status(401).json({ error: 'unauthorized', message });
+    const detail = err instanceof Error ? err.message : 'Invalid or expired token';
+    logger.warn({ err: detail }, 'Token verification failed');
+    res.status(401).json({ error: 'unauthorized', message: 'Invalid or expired token' });
   }
 }
 

@@ -10,14 +10,15 @@ if (process.env.SENTRY_DSN) {
 
 import express from 'express';
 import cors from 'cors';
+import crypto from 'node:crypto';
 import { pinoHttp } from 'pino-http';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
 import { app as appCfg, db } from './config.js';
-import { logger } from './lib/logger.js';
+import { logger, asyncLocalStorage } from './lib/logger.js';
 
-import { auth, matters, contracts, documents, organizations, signatures, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter, events, auditLogs, apiKeys, webhooks, analytics, users } from './routes/index.js';
+import { auth, matters, contracts, documents, organizations, signatures, signatureWebhookRouter, billing, tasks, comments, notifications, clauses, search, reminders, shareLinks, shareTokenRouter, events, auditLogs, apiKeys, webhooks, analytics, users } from './routes/index.js';
 import healthRouter from './routes/health.js';
 import { startReminderScheduler } from './lib/reminder-scheduler.js';
 import { protect } from './middleware/auth.js';
@@ -51,6 +52,15 @@ app.use(cors({
 app.use(pinoHttp({ logger }));
 app.use(cookieParser());
 
+app.use((req, _res, next) => {
+  const ctx = {
+    requestId: req.id as string | undefined,
+    userId: req.user?.id,
+    organizationId: req.user?.organizationId,
+  };
+  asyncLocalStorage.run(ctx, () => next());
+});
+
 const authLimiter = rateLimit({
   windowMs:        15 * 60 * 1000,
   max:             20,
@@ -73,7 +83,10 @@ const apiKeyLimiter = rateLimit({
   max:             1000,
   standardHeaders: true,
   legacyHeaders:   false,
-  keyGenerator:    (req) => req.header('x-api-key') ?? req.ip ?? 'unknown',
+  keyGenerator:    (req) => {
+    const key = req.header('x-api-key');
+    return key ? crypto.createHash('sha256').update(key).digest('hex').slice(0, 16) : (req.ip ?? 'unknown');
+  },
   skip:            (req) => !req.header('x-api-key'),
   message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
@@ -83,7 +96,13 @@ app.use('/api/billing', billing);
 
 app.use(express.json({ limit: '1mb' }));
 
-app.use('/api/auth', authLimiter, auth);
+const noCacheHeaders: express.RequestHandler = (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  next();
+};
+
+app.use('/api/auth', authLimiter, noCacheHeaders, auth);
 
 app.use('/health', healthRouter);
 
@@ -93,25 +112,39 @@ app.get('/', (_req, res) => {
 
 const port = Number(process.env.PORT || appCfg.port || 3333);
 
-app.use('/api/matters',       protect, matters);
-app.use('/api/contracts',     protect, contracts);
-app.use('/api/documents',     protect, documents);
-app.use('/api/organizations', protect, organizations);
-app.use('/api/signatures',    protect, signatures);
-app.use('/api/tasks',         protect, tasks);
-app.use('/api/comments',      protect, comments);
-app.use('/api/notifications', protect, notifications);
-app.use('/api/clauses',       protect, clauses);
-app.use('/api/search',        protect, search);
-app.use('/api/reminders',     protect, reminders);
+const enrichContext: express.RequestHandler = (req, _res, next) => {
+  const store = asyncLocalStorage.getStore();
+  if (store && req.user) {
+    store.userId = req.user.id;
+    store.organizationId = req.user.organizationId;
+  }
+  if (req.user) {
+    Sentry.setUser({ id: req.user.id, email: req.user.email });
+    Sentry.setTag('organizationId', req.user.organizationId ?? 'none');
+  }
+  next();
+};
+
+app.use('/api/matters',       protect, enrichContext, matters);
+app.use('/api/contracts',     protect, enrichContext, contracts);
+app.use('/api/documents',     protect, enrichContext, documents);
+app.use('/api/organizations', protect, enrichContext, organizations);
+app.use('/api/signatures',    protect, enrichContext, signatures);
+app.use('/api/signatures/webhook', signatureWebhookRouter);
+app.use('/api/tasks',         protect, enrichContext, tasks);
+app.use('/api/comments',      protect, enrichContext, comments);
+app.use('/api/notifications', protect, enrichContext, notifications);
+app.use('/api/clauses',       protect, enrichContext, clauses);
+app.use('/api/search',        protect, enrichContext, search);
+app.use('/api/reminders',     protect, enrichContext, reminders);
 app.use('/api/share-links',   shareLinks);
 app.use('/api/share',         shareTokenRouter);
 app.use('/api/events',        events);
-app.use('/api/analytics',     protect, analytics);
-app.use('/api/users',         protect, users);
-app.use('/api/organizations/:orgId/api-keys',    protect, apiKeys);
-app.use('/api/organizations/:orgId/webhooks',    protect, webhooks);
-app.use('/api/organizations/:orgId/audit-logs',  protect, auditLogs);
+app.use('/api/analytics',     protect, enrichContext, analytics);
+app.use('/api/users',         protect, enrichContext, noCacheHeaders, users);
+app.use('/api/organizations/:orgId/api-keys',    protect, enrichContext, noCacheHeaders, apiKeys);
+app.use('/api/organizations/:orgId/webhooks',    protect, enrichContext, noCacheHeaders, webhooks);
+app.use('/api/organizations/:orgId/audit-logs',  protect, enrichContext, auditLogs);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' });
@@ -124,10 +157,11 @@ if (process.env.SENTRY_DSN) {
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ err }, 'Unhandled error');
   const statusCode = (err as any).statusCode || 500;
+  const isProd = appCfg.env === 'production';
   res.status(statusCode).json({
     error:   (err as any).code || 'internal_error',
-    message: err instanceof Error ? err.message : 'An unexpected error occurred',
-    detail:  appCfg.env !== 'production' ? String(err) : undefined,
+    message: isProd ? 'An unexpected error occurred' : (err instanceof Error ? err.message : 'An unexpected error occurred'),
+    ...(isProd ? {} : { detail: String(err) }),
   });
 });
 
@@ -135,6 +169,8 @@ if (process.env['NODE_ENV'] !== 'test') {
   startReminderScheduler();
 
   if (process.env['REDIS_URL']) {
+    const { initSsePubSub } = await import('./lib/sse-registry.js');
+    initSsePubSub();
     initQueues();
 
     const emailWorker   = startEmailWorker();

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import prisma from '../prisma.js';
 
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_SESSIONS_PER_USER = 5;
 
 export const REFRESH_COOKIE = 'cc_rt';
 
@@ -26,6 +27,20 @@ export async function createSession(
   ip?:       string | null,
   userAgent?: string | null,
 ): Promise<string> {
+  const activeSessions = await prisma.session.findMany({
+    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+
+  if (activeSessions.length >= MAX_SESSIONS_PER_USER) {
+    const toRevoke = activeSessions.slice(0, activeSessions.length - MAX_SESSIONS_PER_USER + 1);
+    await prisma.session.updateMany({
+      where: { id: { in: toRevoke.map(s => s.id) } },
+      data:  { revokedAt: new Date() },
+    });
+  }
+
   const raw = generateRawToken();
   await prisma.session.create({
     data: {
@@ -48,6 +63,11 @@ export async function rotateSession(
   const session = await prisma.session.findUnique({ where: { refreshToken: hashed } });
 
   if (!session || session.revokedAt || session.expiresAt < new Date()) {
+    return null;
+  }
+
+  if (session.ip && ip && session.ip !== ip) {
+    await prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
     return null;
   }
 

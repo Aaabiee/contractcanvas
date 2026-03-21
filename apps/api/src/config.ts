@@ -176,13 +176,13 @@ export const DATABASE_URL =
   `postgresql://${encodeURIComponent(db.user)}:${encodeURIComponent(db.password)}` +
   `@${db.host}:${db.port}/${encodeURIComponent(db.name)}?schema=${db.schema}`;
 
-const safeDbUrl = DATABASE_URL.replace(db.password, '****');
-console.log(`[Config] Loaded for env: ${app.env}`);
-console.log(`[Config] API Port: ${app.port}`);
-console.log(`[Config] DB Connection (masked): ${safeDbUrl}`);
-if (s3.endpoint) {
-  console.log(`[Config] S3 Endpoint: ${s3.endpoint}, Bucket: ${s3.bucket}`);
-}
-if (stripe.secretKey && !stripe.secretKey.startsWith('CONTRA_') && stripe.secretKey.length > 8) {
-  console.log(`[Config] Stripe Key: ${stripe.secretKey.substring(0, 8)}...`);
+if (process.env['NODE_ENV'] !== 'test') {
+  const safeDbHost = `${db.host}:${db.port}/${db.name}`;
+  console.log(`[Config] Loaded for env: ${app.env}`);
+  console.log(`[Config] API Port: ${app.port}`);
+  console.log(`[Config] DB Host: ${safeDbHost}`);
+  if (s3.endpoint) {
+    console.log(`[Config] S3 Endpoint: ${s3.endpoint}, Bucket: ${s3.bucket}`);
+  }
+  console.log(`[Config] Stripe: ${stripe.secretKey ? 'configured' : 'not configured'}`);
 }
