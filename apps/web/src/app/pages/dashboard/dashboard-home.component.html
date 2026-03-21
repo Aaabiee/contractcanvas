@@ -1,3 +1,12 @@
+<!-- Email verification banner -->
+<div *ngIf="showVerifyBanner()" class="verify-banner">
+  <mat-icon>mark_email_unread</mat-icon>
+  <span>Please verify your email address to unlock all features.</span>
+  <button mat-stroked-button (click)="resendVerification()" [disabled]="resendState() === 'sending'">
+    {{ resendState() === 'sending' ? 'Sending…' : resendState() === 'sent' ? 'Email sent!' : 'Resend email' }}
+  </button>
+</div>
+
 <!-- Greeting -->
 <div class="header-row">
   <div class="title-wrap">

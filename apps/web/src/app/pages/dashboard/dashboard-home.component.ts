@@ -66,6 +66,20 @@ import { NotificationService } from '../../services/notification.service';
     MatSnackBarModule,
   ],
   templateUrl: './dashboard-home.component.html',
+  styles: [`
+    .verify-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      color: #856404;
+    }
+    .verify-banner span { flex: 1; }
+  `],
 })
 export class DashboardHomeComponent implements OnInit, AfterViewInit {
   private authService     = inject(AuthService);
@@ -77,6 +91,22 @@ export class DashboardHomeComponent implements OnInit, AfterViewInit {
   public  notifService    = inject(NotificationService);
 
   loading = signal(false);
+
+  showVerifyBanner = computed(() => {
+    const u = this.authService.currentUser();
+    return u !== null && (u as any).emailVerified === false;
+  });
+  resendState = signal<'idle' | 'sending' | 'sent'>('idle');
+
+  resendVerification(): void {
+    const email = this.authService.currentUser()?.email;
+    if (!email || this.resendState() !== 'idle') return;
+    this.resendState.set('sending');
+    this.authService.resendVerification(email).subscribe({
+      next: () => this.resendState.set('sent'),
+      error: () => this.resendState.set('idle'),
+    });
+  }
 
   displayName = computed(() => {
     const u = this.authService.currentUser();

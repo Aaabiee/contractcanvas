@@ -13,12 +13,13 @@ export interface PublicName {
 }
 
 export interface User {
-  id:        string;
-  email:     string;
-  name:      PublicName;
-  role:      AppRole;
-  picture?:  string;
-  timezone?: string;
+  id:             string;
+  email:          string;
+  name:           PublicName;
+  role:           AppRole;
+  picture?:       string;
+  timezone?:      string;
+  emailVerified?: boolean;
 }
 
 export interface RegisterResponse {
@@ -156,6 +157,50 @@ export class AuthService {
 
   isLoggedIn(): boolean {
     return !!this._token();
+  }
+
+  emailVerified(): boolean {
+    return !!(this.currentUser() as any)?.emailVerified;
+  }
+
+  verifyEmail(token: string): Observable<{ ok: boolean; token?: string }> {
+    return this.http.get<{ ok: boolean; token?: string }>(
+      `${this.apiUrl}/verify-email?token=${encodeURIComponent(token)}`,
+      { withCredentials: true },
+    ).pipe(
+      tap(res => {
+        if (res.token) {
+          this._token.set(res.token);
+          this.scheduleRefresh(res.token);
+        }
+      }),
+      switchMap(res => {
+        if (res.token) return this.getMe().pipe(map(() => res));
+        return of(res);
+      }),
+    );
+  }
+
+  resendVerification(email: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(
+      `${this.apiUrl}/resend-verification`,
+      { email },
+      { withCredentials: true },
+    );
+  }
+
+  forgotPassword(email: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(
+      `${this.apiUrl}/forgot-password`,
+      { email },
+    );
+  }
+
+  resetPassword(token: string, newPassword: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(
+      `${this.apiUrl}/reset-password`,
+      { token, newPassword },
+    );
   }
 
   // ── private helpers ──────────────────────────────────────────────────
