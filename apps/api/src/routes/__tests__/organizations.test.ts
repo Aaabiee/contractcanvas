@@ -33,6 +33,11 @@ const mockPrisma = {
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
 
+const mockRevokeAllUserSessions = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../lib/session.js', () => ({
+  revokeAllUserSessions: (...args: any[]) => mockRevokeAllUserSessions(...args),
+}));
+
 const { router } = await import('../organizations.js');
 
 function buildApp(userId = 'user-1') {
@@ -367,6 +372,7 @@ describe('DELETE /api/organizations/:orgId/members/:memberId', () => {
     const app = buildApp('user-1');
     const res = await request(app).delete('/org-1/members/m1');
     expect(res.status).toBe(204);
+    expect(mockRevokeAllUserSessions).toHaveBeenCalledWith('user-1');
   });
 
   it('returns 403 when non-admin tries to remove another member', async () => {
@@ -378,7 +384,7 @@ describe('DELETE /api/organizations/:orgId/members/:memberId', () => {
     expect(res.status).toBe(403);
   });
 
-  it('allows admin to remove another member', async () => {
+  it('allows admin to remove another member and revokes their sessions', async () => {
     mockPrisma.organizationMember.findUnique
       .mockResolvedValueOnce({ id: 'm2', organizationId: 'org-1', userId: 'user-2', role: 'MEMBER' })
       .mockResolvedValueOnce({ role: 'ADMIN' });
@@ -386,5 +392,6 @@ describe('DELETE /api/organizations/:orgId/members/:memberId', () => {
     const app = buildApp('user-1');
     const res = await request(app).delete('/org-1/members/m2');
     expect(res.status).toBe(204);
+    expect(mockRevokeAllUserSessions).toHaveBeenCalledWith('user-2');
   });
 });

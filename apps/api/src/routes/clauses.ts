@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
+import { sanitizeMarkdown } from '../lib/sanitize.js';
 
 const router = Router();
 
@@ -75,7 +76,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     if (!v.success) return res.status(400).json({ error: 'Invalid input', details: v.error.flatten() });
 
     const clause = await prisma.clause.create({
-      data: { ...v.data, organizationId },
+      data: { ...v.data, bodyMd: sanitizeMarkdown(v.data.bodyMd), organizationId },
     });
     res.status(201).json(clause);
   } catch (error) {
@@ -94,7 +95,8 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
     const v = ClauseSchema.partial().safeParse(req.body);
     if (!v.success) return res.status(400).json({ error: 'Invalid input', details: v.error.flatten() });
 
-    const updated = await prisma.clause.update({ where: { id: req.params.id }, data: v.data });
+    const sanitized = v.data.bodyMd !== undefined ? { ...v.data, bodyMd: sanitizeMarkdown(v.data.bodyMd) } : v.data;
+    const updated = await prisma.clause.update({ where: { id: req.params.id }, data: sanitized });
     res.json(updated);
   } catch (error) {
     next(error);

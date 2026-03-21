@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
+import { revokeAllUserSessions } from '../lib/session.js';
 
 import { Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
@@ -305,6 +306,9 @@ router.delete(
       await prisma.organizationMember.delete({
         where: { id: memberId, organizationId: orgId },
       });
+
+      // Force the removed user off all active sessions.
+      await revokeAllUserSessions(memberToRemove.userId);
 
       res.status(204).send();
     } catch (error: unknown) {
