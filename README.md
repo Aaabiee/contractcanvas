@@ -2,6 +2,10 @@
 
 ContractCanvas is a multi-tenant contract lifecycle management (CLM) platform for law firms and legal teams.
 
+## Architecture
+
+![ContractCanvas System Architecture](docs/assets/architecture.svg)
+
 ## Tech Stack
 
 - **Runtime**: Node.js 20, TypeScript (strict mode), ESM
@@ -106,67 +110,67 @@ contractcanvas/
 
 All variables are read from `infra/.env` (or shell environment). The API also accepts a `config.json` override at the repo root for non-secret configuration.
 
-| Variable | Required in prod | Purpose |
-| --- | --- | --- |
-| `NODE_ENV` | Yes | `production` \| `development` \| `test` |
-| `PORT` | No | API listen port (default `3333`) |
-| `DATABASE_URL` | Yes | Full PostgreSQL connection string |
-| `POSTGRES_USER` | Yes | PostgreSQL username |
-| `POSTGRES_PASSWORD` | Yes | PostgreSQL password |
-| `POSTGRES_DB` | Yes | PostgreSQL database name |
-| `POSTGRES_PORT` | No | Host-side port mapping (default `5433`) |
-| `JWT_SECRET` | Yes | HS256 signing secret — minimum 64 chars in production |
-| `AUTH_ISSUER` | No | OIDC issuer URL — enables RS256 JWKS verification instead of HS256 |
-| `AUTH_JWKS_URI` | No | Explicit JWKS endpoint (derived from `AUTH_ISSUER` if omitted) |
-| `AUTH_AUDIENCE` | No | Expected JWT audience claim |
-| `FRONTEND_URL` | Yes | Comma-separated list of allowed CORS origins |
-| `S3_ENDPOINT` | No | Override S3 endpoint — set to `http://minio:9000` for local; **must not be set in production** |
-| `S3_REGION` | Yes | S3 / AWS region (default `us-east-1`) |
-| `S3_BUCKET` | Yes | S3 bucket name (default `contractcanvas`) |
-| `S3_ACCESS_KEY` | Yes | S3 / MinIO access key |
-| `S3_SECRET_KEY` | Yes | S3 / MinIO secret key |
-| `S3_FORCE_PATH_STYLE` | No | Set `true` for MinIO (default `true`); `false` for AWS |
-| `STRIPE_SECRET_KEY` | Yes | Stripe secret key — must be `sk_live_…` in production |
-| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signing secret |
-| `REDIS_URL` | No | Redis connection URL (default `redis://localhost:6379`) |
-| `REDIS_PORT` | No | Host-side Redis port mapping (default `6379`) |
-| `SENTRY_DSN` | No | Sentry DSN for error tracking (API and web) |
-| `EMAIL_FROM` | No | Sender address for transactional email |
-| `EMAIL_PROVIDER` | No | `postmark` or `ses` |
-| `POSTMARK_API_KEY` | No | Postmark server token (if `EMAIL_PROVIDER=postmark`) |
-| `LOG_LEVEL` | No | Pino log level — `debug` in dev, `info` in prod (default `info`) |
-| `API_PORT` | No | Host-side API port mapping in Docker (default `3333`) |
-| `WEB_PORT` | No | Host-side web port mapping in Docker (default `80`) |
+| Variable                | Required in prod | Purpose                                                                                        |
+| ----------------------- | ---------------- | ---------------------------------------------------------------------------------------------- |
+| `NODE_ENV`              | Yes              | `production` \| `development` \| `test`                                                        |
+| `PORT`                  | No               | API listen port (default `3333`)                                                               |
+| `DATABASE_URL`          | Yes              | Full PostgreSQL connection string                                                              |
+| `POSTGRES_USER`         | Yes              | PostgreSQL username                                                                            |
+| `POSTGRES_PASSWORD`     | Yes              | PostgreSQL password                                                                            |
+| `POSTGRES_DB`           | Yes              | PostgreSQL database name                                                                       |
+| `POSTGRES_PORT`         | No               | Host-side port mapping (default `5433`)                                                        |
+| `JWT_SECRET`            | Yes              | HS256 signing secret — minimum 64 chars in production                                          |
+| `AUTH_ISSUER`           | No               | OIDC issuer URL — enables RS256 JWKS verification instead of HS256                             |
+| `AUTH_JWKS_URI`         | No               | Explicit JWKS endpoint (derived from `AUTH_ISSUER` if omitted)                                 |
+| `AUTH_AUDIENCE`         | No               | Expected JWT audience claim                                                                    |
+| `FRONTEND_URL`          | Yes              | Comma-separated list of allowed CORS origins                                                   |
+| `S3_ENDPOINT`           | No               | Override S3 endpoint — set to `http://minio:9000` for local; **must not be set in production** |
+| `S3_REGION`             | Yes              | S3 / AWS region (default `us-east-1`)                                                          |
+| `S3_BUCKET`             | Yes              | S3 bucket name (default `contractcanvas`)                                                      |
+| `S3_ACCESS_KEY`         | Yes              | S3 / MinIO access key                                                                          |
+| `S3_SECRET_KEY`         | Yes              | S3 / MinIO secret key                                                                          |
+| `S3_FORCE_PATH_STYLE`   | No               | Set `true` for MinIO (default `true`); `false` for AWS                                         |
+| `STRIPE_SECRET_KEY`     | Yes              | Stripe secret key — must be `sk_live_…` in production                                          |
+| `STRIPE_WEBHOOK_SECRET` | Yes              | Stripe webhook signing secret                                                                  |
+| `REDIS_URL`             | No               | Redis connection URL (default `redis://localhost:6379`)                                        |
+| `REDIS_PORT`            | No               | Host-side Redis port mapping (default `6379`)                                                  |
+| `SENTRY_DSN`            | No               | Sentry DSN for error tracking (API and web)                                                    |
+| `EMAIL_FROM`            | No               | Sender address for transactional email                                                         |
+| `EMAIL_PROVIDER`        | No               | `postmark` or `ses`                                                                            |
+| `POSTMARK_API_KEY`      | No               | Postmark server token (if `EMAIL_PROVIDER=postmark`)                                           |
+| `LOG_LEVEL`             | No               | Pino log level — `debug` in dev, `info` in prod (default `info`)                               |
+| `API_PORT`              | No               | Host-side API port mapping in Docker (default `3333`)                                          |
+| `WEB_PORT`              | No               | Host-side web port mapping in Docker (default `80`)                                            |
 
 ## API Overview
 
 All routes are prefixed with `/api`. Protected routes require a `Bearer <JWT>` token in the `Authorization` header or an `x-api-key` header. Auth routes use a stricter rate limit (20 req / 15 min); all other API routes are limited to 300 req / 15 min.
 
-| Route group | Base path | Auth required |
-| --- | --- | --- |
-| Authentication | `/api/auth` | No (rate-limited) |
-| Users (self) | `/api/users` | Yes |
-| Organizations | `/api/organizations` | Yes |
-| Organization members | `/api/organizations/:orgId/members` | Yes |
-| API keys | `/api/organizations/:orgId/api-keys` | Yes (OWNER/ADMIN) |
-| Webhooks (outbound) | `/api/organizations/:orgId/webhooks` | Yes (OWNER/ADMIN) |
-| Audit logs | `/api/organizations/:orgId/audit-logs` | Yes (OWNER/ADMIN) |
-| Matters | `/api/matters` | Yes |
-| Contracts | `/api/contracts` | Yes |
-| Documents | `/api/documents` | Yes |
-| Signatures | `/api/signatures` | Yes |
-| Clauses | `/api/clauses` | Yes |
-| Comments | `/api/comments` | Yes |
-| Tasks | `/api/tasks` | Yes |
-| Reminders | `/api/reminders` | Yes |
-| Notifications | `/api/notifications` | Yes |
-| Share links | `/api/share-links` | Yes (create); token-based (read) |
-| Shared resources | `/api/share/:token` | No (token-based) |
-| Real-time events (SSE) | `/api/events/stream` | Yes |
-| Billing | `/api/billing` | Stripe webhook: raw body; others: Yes |
-| Analytics | `/api/analytics` | Yes (OWNER/ADMIN) |
-| Search | `/api/search` | Yes |
-| Health check | `/health` | No |
+| Route group            | Base path                              | Auth required                         |
+| ---------------------- | -------------------------------------- | ------------------------------------- |
+| Authentication         | `/api/auth`                            | No (rate-limited)                     |
+| Users (self)           | `/api/users`                           | Yes                                   |
+| Organizations          | `/api/organizations`                   | Yes                                   |
+| Organization members   | `/api/organizations/:orgId/members`    | Yes                                   |
+| API keys               | `/api/organizations/:orgId/api-keys`   | Yes (OWNER/ADMIN)                     |
+| Webhooks (outbound)    | `/api/organizations/:orgId/webhooks`   | Yes (OWNER/ADMIN)                     |
+| Audit logs             | `/api/organizations/:orgId/audit-logs` | Yes (OWNER/ADMIN)                     |
+| Matters                | `/api/matters`                         | Yes                                   |
+| Contracts              | `/api/contracts`                       | Yes                                   |
+| Documents              | `/api/documents`                       | Yes                                   |
+| Signatures             | `/api/signatures`                      | Yes                                   |
+| Clauses                | `/api/clauses`                         | Yes                                   |
+| Comments               | `/api/comments`                        | Yes                                   |
+| Tasks                  | `/api/tasks`                           | Yes                                   |
+| Reminders              | `/api/reminders`                       | Yes                                   |
+| Notifications          | `/api/notifications`                   | Yes                                   |
+| Share links            | `/api/share-links`                     | Yes (create); token-based (read)      |
+| Shared resources       | `/api/share/:token`                    | No (token-based)                      |
+| Real-time events (SSE) | `/api/events/stream`                   | Yes                                   |
+| Billing                | `/api/billing`                         | Stripe webhook: raw body; others: Yes |
+| Analytics              | `/api/analytics`                       | Yes (OWNER/ADMIN)                     |
+| Search                 | `/api/search`                          | Yes                                   |
+| Health check           | `/health`                              | No                                    |
 
 ## Running Tests
 

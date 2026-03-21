@@ -7,20 +7,24 @@ title: Home
 
 ContractCanvas is a multi-tenant contract lifecycle management (CLM) platform for law firms and legal teams. Built with Express, Angular, PostgreSQL, and Prisma.
 
+## Architecture
+
+![ContractCanvas System Architecture](assets/architecture.svg)
+
 ## Quick Navigation
 
-| Section | Description |
-|---------|-------------|
-| [Getting Started](getting-started) | Setup, prerequisites, local dev |
-| [Architecture](architecture) | System overview, data model, auth flow |
-| [API Reference](api-reference) | All REST endpoints, request/response formats |
-| [Frontend Guide](frontend-guide) | Angular app structure, services, routing |
-| [Security](security) | Auth, OWASP mitigations, IDOR prevention |
-| [Deployment](deployment) | Docker, CI/CD, environment variables |
-| [E-Signatures](e-signatures) | DocuSign / HelloSign integration |
-| [Testing](testing) | Unit, integration, E2E test strategy |
-| [Contributing](contributing) | Code style, PR process, branch strategy |
-| [Legal Templates](legal/) | Privacy Policy, Terms of Service, DPA |
+| Section                            | Description                                  |
+| ---------------------------------- | -------------------------------------------- |
+| [Getting Started](getting-started) | Setup, prerequisites, local dev              |
+| [Architecture](architecture)       | System overview, data model, auth flow       |
+| [API Reference](api-reference)     | All REST endpoints, request/response formats |
+| [Frontend Guide](frontend-guide)   | Angular app structure, services, routing     |
+| [Security](security)               | Auth, OWASP mitigations, IDOR prevention     |
+| [Deployment](deployment)           | Docker, CI/CD, environment variables         |
+| [E-Signatures](e-signatures)       | DocuSign / HelloSign integration             |
+| [Testing](testing)                 | Unit, integration, E2E test strategy         |
+| [Contributing](contributing)       | Code style, PR process, branch strategy      |
+| [Legal Templates](legal/)          | Privacy Policy, Terms of Service, DPA        |
 
 ## Tech Stack
 

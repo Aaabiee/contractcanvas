@@ -7,6 +7,11 @@ title: Architecture
 
 ## System Overview
 
+![ContractCanvas System Architecture](assets/architecture.svg)
+
+<details>
+<summary>Text-based diagram (for terminals)</summary>
+
 ```text
                           ┌─────────────┐
   Browser / Mobile        │  Angular 19  │
@@ -44,6 +49,8 @@ title: Architecture
   Analytics:     GET /api/analytics/overview + /contract-trends
   Onboarding:    PATCH /api/users/me/onboarding (OnboardingStep enum)
 ```
+
+</details>
 
 ---
 

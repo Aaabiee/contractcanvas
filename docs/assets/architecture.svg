@@ -1,0 +1,382 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 920" font-family="'Segoe UI',system-ui,-apple-system,sans-serif">
+  <defs>
+    <!-- Arrowhead -->
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#546E7A"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#1565C0"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2E7D32"/>
+    </marker>
+
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+
+    <!-- Section backgrounds -->
+    <linearGradient id="clientBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E3F2FD"/>
+      <stop offset="100%" stop-color="#BBDEFB"/>
+    </linearGradient>
+    <linearGradient id="webBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E8F5E9"/>
+      <stop offset="100%" stop-color="#C8E6C9"/>
+    </linearGradient>
+    <linearGradient id="appBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFF3E0"/>
+      <stop offset="100%" stop-color="#FFE0B2"/>
+    </linearGradient>
+    <linearGradient id="dataBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F3E5F5"/>
+      <stop offset="100%" stop-color="#E1BEE7"/>
+    </linearGradient>
+    <linearGradient id="extBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ECEFF1"/>
+      <stop offset="100%" stop-color="#CFD8DC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Canvas background -->
+  <rect width="1280" height="920" rx="12" fill="#FAFAFA"/>
+
+  <!-- Title -->
+  <text x="640" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#1A237E">ContractCanvas — System Architecture</text>
+
+  <!-- ==================== CLIENT TIER ==================== -->
+  <rect x="20" y="52" width="400" height="90" rx="10" fill="url(#clientBg)" stroke="#90CAF9" stroke-width="1"/>
+  <text x="36" y="72" font-size="11" font-weight="600" fill="#1565C0" text-transform="uppercase" letter-spacing="1">CLIENT</text>
+
+  <!-- Browser -->
+  <rect x="40" y="82" width="360" height="48" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="40" y="82" width="360" height="48" rx="8" fill="none" stroke="#1565C0" stroke-width="1.5"/>
+  <!-- Browser icon -->
+  <circle cx="68" cy="106" r="14" fill="#1565C0" opacity="0.12"/>
+  <rect x="58" y="97" width="20" height="14" rx="2" fill="none" stroke="#1565C0" stroke-width="1.5"/>
+  <line x1="58" y1="103" x2="78" y2="103" stroke="#1565C0" stroke-width="1"/>
+  <line x1="68" y1="103" x2="68" y2="111" stroke="#1565C0" stroke-width="1"/>
+  <text x="92" y="103" font-size="14" font-weight="600" fill="#0D47A1">Browser</text>
+  <text x="92" y="118" font-size="11" fill="#546E7A">Angular 20 SPA  |  Material Design 3  |  Chart.js</text>
+
+  <!-- ==================== WEB TIER ==================== -->
+  <rect x="20" y="168" width="400" height="90" rx="10" fill="url(#webBg)" stroke="#A5D6A7" stroke-width="1"/>
+  <text x="36" y="188" font-size="11" font-weight="600" fill="#2E7D32" letter-spacing="1">WEB TIER</text>
+
+  <!-- nginx -->
+  <rect x="40" y="198" width="360" height="48" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="40" y="198" width="360" height="48" rx="8" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+  <circle cx="68" cy="222" r="14" fill="#009639" opacity="0.15"/>
+  <text x="58" y="227" font-size="16" font-weight="700" fill="#009639">N</text>
+  <text x="92" y="219" font-size="14" font-weight="600" fill="#1B5E20">nginx 1.27</text>
+  <text x="92" y="234" font-size="11" fill="#546E7A">Reverse proxy  |  TLS  |  CSP  |  HSTS  |  Gzip  |  SPA fallback</text>
+
+  <!-- Arrow: Browser → nginx -->
+  <line x1="220" y1="130" x2="220" y2="198" stroke="#546E7A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="228" y="168" font-size="10" fill="#546E7A">HTTPS</text>
+
+  <!-- ==================== APPLICATION TIER ==================== -->
+  <rect x="20" y="284" width="830" height="200" rx="10" fill="url(#appBg)" stroke="#FFCC80" stroke-width="1"/>
+  <text x="36" y="304" font-size="11" font-weight="600" fill="#E65100" letter-spacing="1">APPLICATION TIER</text>
+
+  <!-- Express API -->
+  <rect x="40" y="314" width="370" height="80" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="40" y="314" width="370" height="80" rx="8" fill="none" stroke="#E65100" stroke-width="1.5"/>
+  <circle cx="68" cy="340" r="14" fill="#E65100" opacity="0.12"/>
+  <text x="56" y="344" font-size="14" font-weight="700" fill="#E65100">{ }</text>
+  <text x="92" y="337" font-size="14" font-weight="600" fill="#BF360C">Express API</text>
+  <text x="170" y="337" font-size="11" fill="#78909C">Node.js 20  |  TypeScript</text>
+  <text x="92" y="353" font-size="10.5" fill="#546E7A">Prisma ORM  |  Zod validation  |  Pino logging</text>
+  <text x="92" y="367" font-size="10.5" fill="#546E7A">JWT auth (HS256/RS256)  |  RBAC  |  Rate limiting</text>
+  <text x="92" y="381" font-size="10.5" fill="#546E7A">SSE push  |  Helmet security  |  Multi-tenant isolation</text>
+
+  <!-- Arrow: nginx → Express -->
+  <line x1="220" y1="246" x2="220" y2="314" stroke="#546E7A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="228" y="283" font-size="10" fill="#546E7A">REST + SSE</text>
+
+  <!-- BullMQ Workers -->
+  <rect x="440" y="314" width="200" height="80" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="440" y="314" width="200" height="80" rx="8" fill="none" stroke="#6A1B9A" stroke-width="1.5"/>
+  <circle cx="468" cy="340" r="14" fill="#6A1B9A" opacity="0.12"/>
+  <text x="458" y="344" font-size="13" font-weight="700" fill="#6A1B9A">Q</text>
+  <text x="492" y="337" font-size="13" font-weight="600" fill="#4A148C">BullMQ Workers</text>
+  <text x="456" y="357" font-size="10.5" fill="#546E7A">emailQueue</text>
+  <text x="456" y="370" font-size="10.5" fill="#546E7A">webhookQueue</text>
+  <text x="540" y="357" font-size="10.5" fill="#546E7A">pdfQueue</text>
+  <text x="540" y="370" font-size="10.5" fill="#546E7A">cleanupQueue</text>
+  <text x="456" y="385" font-size="10" fill="#78909C">Bull Board: /admin/queues</text>
+
+  <!-- node-cron -->
+  <rect x="670" y="314" width="164" height="80" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="670" y="314" width="164" height="80" rx="8" fill="none" stroke="#00695C" stroke-width="1.5"/>
+  <circle cx="698" cy="340" r="14" fill="#00695C" opacity="0.12"/>
+  <!-- Clock icon -->
+  <circle cx="698" cy="340" r="9" fill="none" stroke="#00695C" stroke-width="1.5"/>
+  <line x1="698" y1="335" x2="698" y2="340" stroke="#00695C" stroke-width="1.5"/>
+  <line x1="698" y1="340" x2="702" y2="343" stroke="#00695C" stroke-width="1.5"/>
+  <text x="722" y="337" font-size="13" font-weight="600" fill="#004D40">node-cron</text>
+  <text x="686" y="360" font-size="10.5" fill="#546E7A">Reminder delivery</text>
+  <text x="686" y="374" font-size="10.5" fill="#546E7A">Onboarding nudge</text>
+  <text x="686" y="388" font-size="10" fill="#78909C">In-process scheduler</text>
+
+  <!-- Arrow: Express → BullMQ -->
+  <line x1="410" y1="354" x2="440" y2="354" stroke="#6A1B9A" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+
+  <!-- Arrow: Express → cron -->
+  <path d="M 410 354 L 425 354 L 425 340 L 670 340" fill="none" stroke="#00695C" stroke-width="1.2" stroke-dasharray="4,3"/>
+
+  <!-- ==================== DATA TIER ==================== -->
+  <rect x="20" y="510" width="830" height="130" rx="10" fill="url(#dataBg)" stroke="#CE93D8" stroke-width="1"/>
+  <text x="36" y="530" font-size="11" font-weight="600" fill="#6A1B9A" letter-spacing="1">DATA TIER</text>
+
+  <!-- PostgreSQL -->
+  <g transform="translate(60,546)">
+    <rect width="220" height="78" rx="8" fill="#fff" filter="url(#shadow)"/>
+    <rect width="220" height="78" rx="8" fill="none" stroke="#336791" stroke-width="1.5"/>
+    <!-- DB cylinder icon -->
+    <ellipse cx="28" cy="22" rx="12" ry="6" fill="#336791" opacity="0.18"/>
+    <rect x="16" y="22" width="24" height="18" fill="#336791" opacity="0.10"/>
+    <ellipse cx="28" cy="40" rx="12" ry="6" fill="#336791" opacity="0.18"/>
+    <ellipse cx="28" cy="22" rx="12" ry="6" fill="none" stroke="#336791" stroke-width="1.2"/>
+    <line x1="16" y1="22" x2="16" y2="40" stroke="#336791" stroke-width="1.2"/>
+    <line x1="40" y1="22" x2="40" y2="40" stroke="#336791" stroke-width="1.2"/>
+    <ellipse cx="28" cy="40" rx="12" ry="6" fill="none" stroke="#336791" stroke-width="1.2"/>
+    <text x="52" y="26" font-size="13" font-weight="600" fill="#1A237E">PostgreSQL 16</text>
+    <text x="52" y="42" font-size="10.5" fill="#546E7A">Prisma 5 ORM  |  CUID IDs</text>
+    <text x="52" y="55" font-size="10.5" fill="#546E7A">tsvector search  |  Audit log</text>
+    <text x="52" y="68" font-size="10.5" fill="#546E7A">PgBouncer pool (20 conn)</text>
+  </g>
+
+  <!-- Redis -->
+  <g transform="translate(320,546)">
+    <rect width="220" height="78" rx="8" fill="#fff" filter="url(#shadow)"/>
+    <rect width="220" height="78" rx="8" fill="none" stroke="#DC382D" stroke-width="1.5"/>
+    <!-- Redis diamond icon -->
+    <polygon points="28,16 42,30 28,44 14,30" fill="#DC382D" opacity="0.15" stroke="#DC382D" stroke-width="1.2"/>
+    <text x="52" y="26" font-size="13" font-weight="600" fill="#B71C1C">Redis 7</text>
+    <text x="52" y="42" font-size="10.5" fill="#546E7A">JWT blacklist (TTL-based)</text>
+    <text x="52" y="55" font-size="10.5" fill="#546E7A">BullMQ job queues</text>
+    <text x="52" y="68" font-size="10.5" fill="#546E7A">SSE Pub/Sub broadcast</text>
+  </g>
+
+  <!-- S3 / MinIO -->
+  <g transform="translate(580,546)">
+    <rect width="250" height="78" rx="8" fill="#fff" filter="url(#shadow)"/>
+    <rect width="250" height="78" rx="8" fill="none" stroke="#569A31" stroke-width="1.5"/>
+    <!-- Bucket icon -->
+    <path d="M16,22 L22,18 L38,18 L44,22 L42,44 L18,44 Z" fill="#569A31" opacity="0.15" stroke="#569A31" stroke-width="1.2"/>
+    <line x1="20" y1="30" x2="40" y2="30" stroke="#569A31" stroke-width="1"/>
+    <text x="52" y="26" font-size="13" font-weight="600" fill="#33691E">AWS S3 / MinIO</text>
+    <text x="52" y="42" font-size="10.5" fill="#546E7A">Document storage (AES-256)</text>
+    <text x="52" y="55" font-size="10.5" fill="#546E7A">Pre-signed URLs (60s expiry)</text>
+    <text x="52" y="68" font-size="10.5" fill="#546E7A">Daily pg_dump backups</text>
+  </g>
+
+  <!-- Arrows: Express → Data stores -->
+  <line x1="140" y1="394" x2="140" y2="546" stroke="#336791" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="146" y="472" font-size="10" fill="#336791">Prisma</text>
+
+  <line x1="350" y1="394" x2="430" y2="546" stroke="#DC382D" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="375" y="472" font-size="10" fill="#DC382D">ioredis</text>
+
+  <line x1="310" y1="394" x2="680" y2="546" stroke="#569A31" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="520" y="455" font-size="10" fill="#569A31">@aws-sdk/s3</text>
+
+  <!-- BullMQ → Redis -->
+  <line x1="540" y1="394" x2="460" y2="546" stroke="#6A1B9A" stroke-width="1.2" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+
+  <!-- ==================== EXTERNAL SERVICES ==================== -->
+  <rect x="870" y="52" width="390" height="588" rx="10" fill="url(#extBg)" stroke="#B0BEC5" stroke-width="1"/>
+  <text x="886" y="72" font-size="11" font-weight="600" fill="#37474F" letter-spacing="1">EXTERNAL SERVICES</text>
+
+  <!-- Stripe -->
+  <rect x="890" y="86" width="350" height="72" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="86" width="350" height="72" rx="8" fill="none" stroke="#635BFF" stroke-width="1.5"/>
+  <rect x="908" y="104" width="28" height="20" rx="4" fill="#635BFF" opacity="0.15"/>
+  <text x="914" y="118" font-size="12" font-weight="700" fill="#635BFF">S</text>
+  <text x="946" y="108" font-size="13" font-weight="600" fill="#4527A0">Stripe</text>
+  <text x="946" y="124" font-size="10.5" fill="#546E7A">Subscriptions  |  Invoices  |  Payment intents</text>
+  <text x="946" y="137" font-size="10.5" fill="#546E7A">Billing portal  |  Webhook verification</text>
+  <text x="946" y="150" font-size="10" fill="#78909C">Plans: Starter / Professional / Enterprise</text>
+
+  <!-- Postmark / SES -->
+  <rect x="890" y="172" width="350" height="64" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="172" width="350" height="64" rx="8" fill="none" stroke="#FFAB00" stroke-width="1.5"/>
+  <rect x="908" y="188" width="28" height="20" rx="4" fill="#FFAB00" opacity="0.15"/>
+  <!-- Mail icon -->
+  <rect x="912" y="192" width="20" height="13" rx="2" fill="none" stroke="#FFAB00" stroke-width="1.2"/>
+  <polyline points="912,192 922,200 932,192" fill="none" stroke="#FFAB00" stroke-width="1.2"/>
+  <text x="946" y="200" font-size="13" font-weight="600" fill="#E65100">Postmark / AWS SES</text>
+  <text x="946" y="216" font-size="10.5" fill="#546E7A">Verification  |  Password reset  |  Notifications</text>
+  <text x="946" y="229" font-size="10" fill="#78909C">BullMQ async delivery with retry</text>
+
+  <!-- DocuSign -->
+  <rect x="890" y="250" width="350" height="64" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="250" width="350" height="64" rx="8" fill="none" stroke="#1A43BF" stroke-width="1.5"/>
+  <rect x="908" y="266" width="28" height="20" rx="4" fill="#1A43BF" opacity="0.15"/>
+  <!-- Pen icon -->
+  <line x1="918" y1="282" x2="928" y2="272" stroke="#1A43BF" stroke-width="1.5"/>
+  <polyline points="926,274 930,270 932,272 928,276" fill="none" stroke="#1A43BF" stroke-width="1.2"/>
+  <text x="946" y="278" font-size="13" font-weight="600" fill="#0D47A1">DocuSign / HelloSign</text>
+  <text x="946" y="294" font-size="10.5" fill="#546E7A">E-signature envelopes  |  Webhook callbacks</text>
+  <text x="946" y="307" font-size="10" fill="#78909C">Provider abstraction layer</text>
+
+  <!-- Sentry -->
+  <rect x="890" y="328" width="350" height="56" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="328" width="350" height="56" rx="8" fill="none" stroke="#362D59" stroke-width="1.5"/>
+  <rect x="908" y="342" width="28" height="20" rx="4" fill="#362D59" opacity="0.15"/>
+  <circle cx="922" cy="352" r="7" fill="none" stroke="#362D59" stroke-width="1.5"/>
+  <circle cx="922" cy="350" r="2" fill="#362D59"/>
+  <text x="946" y="354" font-size="13" font-weight="600" fill="#362D59">Sentry</text>
+  <text x="946" y="370" font-size="10.5" fill="#546E7A">Error tracking  |  Performance (API + Angular)</text>
+  <text x="946" y="380" font-size="10" fill="#78909C">10% sampling prod  |  User + org context</text>
+
+  <!-- Logging -->
+  <rect x="890" y="398" width="350" height="56" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="398" width="350" height="56" rx="8" fill="none" stroke="#00838F" stroke-width="1.5"/>
+  <rect x="908" y="412" width="28" height="20" rx="4" fill="#00838F" opacity="0.15"/>
+  <text x="913" y="427" font-size="12" font-weight="700" fill="#00838F">{ }</text>
+  <text x="946" y="424" font-size="13" font-weight="600" fill="#006064">Pino Logging</text>
+  <text x="946" y="440" font-size="10.5" fill="#546E7A">Datadog  |  CloudWatch  |  Grafana Loki</text>
+  <text x="946" y="450" font-size="10" fill="#78909C">Structured JSON  |  Async local storage context</text>
+
+  <!-- Customer Webhooks -->
+  <rect x="890" y="468" width="350" height="56" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="468" width="350" height="56" rx="8" fill="none" stroke="#5D4037" stroke-width="1.5"/>
+  <rect x="908" y="482" width="28" height="20" rx="4" fill="#5D4037" opacity="0.15"/>
+  <!-- Webhook arrow icon -->
+  <polyline points="914,492 924,485 924,490" fill="none" stroke="#5D4037" stroke-width="1.5"/>
+  <line x1="924" y1="492" x2="932" y2="492" stroke="#5D4037" stroke-width="1.5"/>
+  <text x="946" y="494" font-size="13" font-weight="600" fill="#3E2723">Outbound Webhooks</text>
+  <text x="946" y="510" font-size="10.5" fill="#546E7A">HMAC-SHA256 signed  |  SSRF protection</text>
+  <text x="946" y="520" font-size="10" fill="#78909C">Contract lifecycle events → customer endpoints</text>
+
+  <!-- GitHub Actions -->
+  <rect x="890" y="546" width="350" height="78" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="890" y="546" width="350" height="78" rx="8" fill="none" stroke="#24292F" stroke-width="1.5"/>
+  <rect x="908" y="560" width="28" height="20" rx="4" fill="#24292F" opacity="0.10"/>
+  <!-- GH icon approximation -->
+  <circle cx="922" cy="570" r="8" fill="none" stroke="#24292F" stroke-width="1.5"/>
+  <path d="M918,576 L918,580 M926,576 L926,580" stroke="#24292F" stroke-width="1.2" stroke-linecap="round"/>
+  <text x="946" y="570" font-size="13" font-weight="600" fill="#24292F">GitHub Actions CI/CD</text>
+  <text x="946" y="586" font-size="10.5" fill="#546E7A">Lint  |  Test  |  Build  |  E2E (Playwright)</text>
+  <text x="946" y="599" font-size="10.5" fill="#546E7A">Docker → GHCR  |  SSH deploy</text>
+  <text x="946" y="612" font-size="10" fill="#78909C">Envs: dev → QA → prod  |  Secret scan  |  Backup verify</text>
+
+  <!-- ==================== CONNECTION ARROWS (App → External) ==================== -->
+  <!-- Express → Stripe -->
+  <path d="M 410 340 L 860 122" fill="none" stroke="#635BFF" stroke-width="1.3" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- Express → Postmark -->
+  <path d="M 410 354 L 860 200" fill="none" stroke="#FFAB00" stroke-width="1.3" marker-end="url(#arrow)" opacity="0.7" stroke-dasharray="6,3"/>
+  <text x="650" y="268" font-size="9" fill="#FFAB00">via BullMQ</text>
+
+  <!-- Express → DocuSign -->
+  <path d="M 410 368 L 860 280" fill="none" stroke="#1A43BF" stroke-width="1.3" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- Express → Sentry -->
+  <path d="M 410 380 L 860 356" fill="none" stroke="#362D59" stroke-width="1.2" marker-end="url(#arrow)" opacity="0.5" stroke-dasharray="4,3"/>
+
+  <!-- Express → Logging -->
+  <path d="M 410 388 L 860 426" fill="none" stroke="#00838F" stroke-width="1.2" marker-end="url(#arrow)" opacity="0.5" stroke-dasharray="4,3"/>
+
+  <!-- BullMQ → Outbound Webhooks -->
+  <path d="M 640 380 L 860 496" fill="none" stroke="#5D4037" stroke-width="1.2" marker-end="url(#arrow)" opacity="0.6" stroke-dasharray="5,3"/>
+
+  <!-- ==================== DOCKER LAYER ==================== -->
+  <rect x="20" y="660" width="1240" height="100" rx="10" fill="#E3F2FD" stroke="#2196F3" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="36" y="680" font-size="11" font-weight="600" fill="#1565C0" letter-spacing="1">INFRASTRUCTURE</text>
+
+  <!-- Docker -->
+  <rect x="40" y="694" width="260" height="52" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="40" y="694" width="260" height="52" rx="8" fill="none" stroke="#2196F3" stroke-width="1.5"/>
+  <!-- Docker whale approximation -->
+  <rect x="58" y="710" width="22" height="12" rx="2" fill="#2196F3" opacity="0.3"/>
+  <rect x="60" y="706" width="5" height="5" rx="1" fill="#2196F3" opacity="0.5"/>
+  <rect x="66" y="706" width="5" height="5" rx="1" fill="#2196F3" opacity="0.5"/>
+  <rect x="72" y="706" width="5" height="5" rx="1" fill="#2196F3" opacity="0.5"/>
+  <text x="90" y="718" font-size="13" font-weight="600" fill="#0D47A1">Docker Compose</text>
+  <text x="90" y="734" font-size="10.5" fill="#546E7A">Multi-stage builds  |  Health checks  |  Profiles</text>
+
+  <!-- PgBouncer -->
+  <rect x="320" y="694" width="220" height="52" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="320" y="694" width="220" height="52" rx="8" fill="none" stroke="#336791" stroke-width="1.5"/>
+  <text x="340" y="718" font-size="13" font-weight="600" fill="#1A237E">PgBouncer</text>
+  <text x="340" y="734" font-size="10.5" fill="#546E7A">Transaction pool  |  20 pool  |  200 max</text>
+
+  <!-- Volumes -->
+  <rect x="560" y="694" width="220" height="52" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="560" y="694" width="220" height="52" rx="8" fill="none" stroke="#78909C" stroke-width="1.5"/>
+  <text x="580" y="718" font-size="13" font-weight="600" fill="#37474F">Docker Volumes</text>
+  <text x="580" y="734" font-size="10.5" fill="#546E7A">pgdata  |  redisdata  |  miniodata</text>
+
+  <!-- WAL/Backup -->
+  <rect x="800" y="694" width="220" height="52" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="800" y="694" width="220" height="52" rx="8" fill="none" stroke="#E65100" stroke-width="1.5"/>
+  <text x="820" y="718" font-size="13" font-weight="600" fill="#BF360C">Backup & Recovery</text>
+  <text x="820" y="734" font-size="10.5" fill="#546E7A">pg_dump → S3  |  WAL archiving  |  PITR</text>
+
+  <!-- ==================== SECURITY ANNOTATIONS ==================== -->
+  <rect x="20" y="780" width="1240" height="128" rx="10" fill="#FFF8E1" stroke="#FFC107" stroke-width="1"/>
+  <text x="36" y="800" font-size="11" font-weight="600" fill="#F57F17" letter-spacing="1">SECURITY &amp; COMPLIANCE</text>
+
+  <g transform="translate(40,812)">
+    <!-- Row 1 -->
+    <rect width="180" height="28" rx="6" fill="#E8F5E9" stroke="#66BB6A" stroke-width="1"/>
+    <text x="12" y="18" font-size="11" fill="#2E7D32">JWT (HS256 / RS256)</text>
+
+    <rect x="192" width="180" height="28" rx="6" fill="#E8F5E9" stroke="#66BB6A" stroke-width="1"/>
+    <text x="204" y="18" font-size="11" fill="#2E7D32">httpOnly Refresh Cookies</text>
+
+    <rect x="384" width="180" height="28" rx="6" fill="#E8F5E9" stroke="#66BB6A" stroke-width="1"/>
+    <text x="396" y="18" font-size="11" fill="#2E7D32">Redis Token Blacklist</text>
+
+    <rect x="576" width="180" height="28" rx="6" fill="#E8F5E9" stroke="#66BB6A" stroke-width="1"/>
+    <text x="588" y="18" font-size="11" fill="#2E7D32">bcrypt Password Hash</text>
+
+    <rect x="768" width="180" height="28" rx="6" fill="#E8F5E9" stroke="#66BB6A" stroke-width="1"/>
+    <text x="780" y="18" font-size="11" fill="#2E7D32">Helmet + CSP + HSTS</text>
+
+    <rect x="960" width="220" height="28" rx="6" fill="#E8F5E9" stroke="#66BB6A" stroke-width="1"/>
+    <text x="972" y="18" font-size="11" fill="#2E7D32">Rate Limit (20/300/1000 rpm)</text>
+
+    <!-- Row 2 -->
+    <rect y="36" width="180" height="28" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/>
+    <text x="12" y="54" font-size="11" fill="#1565C0">Multi-tenant Isolation</text>
+
+    <rect x="192" y="36" width="180" height="28" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/>
+    <text x="204" y="54" font-size="11" fill="#1565C0">DOMPurify XSS Sanitize</text>
+
+    <rect x="384" y="36" width="180" height="28" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/>
+    <text x="396" y="54" font-size="11" fill="#1565C0">SSRF Webhook Guard</text>
+
+    <rect x="576" y="36" width="180" height="28" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/>
+    <text x="588" y="54" font-size="11" fill="#1565C0">Presigned URL Access</text>
+
+    <rect x="768" y="36" width="180" height="28" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/>
+    <text x="780" y="54" font-size="11" fill="#1565C0">S3 AES-256 Encryption</text>
+
+    <rect x="960" y="36" width="220" height="28" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/>
+    <text x="972" y="54" font-size="11" fill="#1565C0">Audit Log (7-year retention)</text>
+
+    <!-- Row 3 -->
+    <rect y="72" width="180" height="28" rx="6" fill="#F3E5F5" stroke="#AB47BC" stroke-width="1"/>
+    <text x="12" y="90" font-size="11" fill="#6A1B9A">GDPR SetNull Cascade</text>
+
+    <rect x="192" y="72" width="180" height="28" rx="6" fill="#F3E5F5" stroke="#AB47BC" stroke-width="1"/>
+    <text x="204" y="90" font-size="11" fill="#6A1B9A">Soft Delete + Retention</text>
+
+    <rect x="384" y="72" width="180" height="28" rx="6" fill="#F3E5F5" stroke="#AB47BC" stroke-width="1"/>
+    <text x="396" y="90" font-size="11" fill="#6A1B9A">Secret Scan CI Gate</text>
+
+    <rect x="576" y="72" width="180" height="28" rx="6" fill="#F3E5F5" stroke="#AB47BC" stroke-width="1"/>
+    <text x="588" y="90" font-size="11" fill="#6A1B9A">Session Revocation</text>
+
+    <rect x="768" y="72" width="180" height="28" rx="6" fill="#F3E5F5" stroke="#AB47BC" stroke-width="1"/>
+    <text x="780" y="90" font-size="11" fill="#6A1B9A">Email Verification Flow</text>
+
+    <rect x="960" y="72" width="220" height="28" rx="6" fill="#F3E5F5" stroke="#AB47BC" stroke-width="1"/>
+    <text x="972" y="90" font-size="11" fill="#6A1B9A">HMAC-SHA256 Webhooks</text>
+  </g>
+</svg>
