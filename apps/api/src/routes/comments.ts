@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
+import { sanitizeMarkdown } from '../lib/sanitize.js';
 
 const router = Router();
 
@@ -70,10 +71,38 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const v = CreateCommentSchema.safeParse(req.body);
     if (!v.success) return res.status(400).json({ error: 'Invalid input', details: v.error.flatten() });
 
+    // IDOR guard: verify the referenced resource belongs to this org before
+    // creating the comment.  Without this check a user could attach comments
+    // to resources owned by other tenants.
+    if (v.data.matterId) {
+      const matter = await prisma.matter.findFirst({
+        where: { id: v.data.matterId, organizationId, deletedAt: null },
+      });
+      if (!matter) return res.status(404).json({ error: 'Matter not found' });
+    }
+    if (v.data.contractId) {
+      const contract = await prisma.contract.findFirst({
+        where: { id: v.data.contractId, organizationId },
+      });
+      if (!contract) return res.status(404).json({ error: 'Contract not found' });
+    }
+    if (v.data.contractVersionId) {
+      const cv = await prisma.contractVersion.findFirst({
+        where: { id: v.data.contractVersionId, contract: { organizationId } },
+      });
+      if (!cv) return res.status(404).json({ error: 'Contract version not found' });
+    }
+    if (v.data.documentId) {
+      const doc = await prisma.document.findFirst({
+        where: { id: v.data.documentId, organizationId },
+      });
+      if (!doc) return res.status(404).json({ error: 'Document not found' });
+    }
+
     const comment = await prisma.comment.create({
       data: {
         organizationId,
-        bodyMd:            v.data.bodyMd,
+        bodyMd:            sanitizeMarkdown(v.data.bodyMd),
         authorId,
         matterId:          v.data.matterId,
         contractId:        v.data.contractId,
@@ -105,7 +134,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
 
     const updated = await prisma.comment.update({
       where: { id: req.params.id },
-      data:  { bodyMd: v.data.bodyMd, editedAt: new Date() },
+      data:  { bodyMd: sanitizeMarkdown(v.data.bodyMd), editedAt: new Date() },
       include: { author: { select: { id: true, firstName: true, lastName: true } } },
     });
 

@@ -23,8 +23,18 @@ const mockPrisma = {
     delete:    vi.fn(),
     count:     vi.fn(),
   },
+  matter:          { findFirst: vi.fn() },
+  contract:        { findFirst: vi.fn() },
+  contractVersion: { findFirst: vi.fn() },
+  document:        { findFirst: vi.fn() },
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
+
+// Passthrough so existing assertions see the exact string they send.
+// XSS stripping is unit-tested in sanitize.test.ts.
+vi.mock('../../lib/sanitize.js', () => ({
+  sanitizeMarkdown: (s: string) => s,
+}));
 
 const { default: router } = await import('../comments.js');
 
@@ -134,7 +144,35 @@ describe('POST /api/comments', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 404 when matterId does not belong to org (IDOR guard)', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue(null); // foreign org's matter
+    const res = await request(buildApp())
+      .post('/')
+      .send({ bodyMd: '# Note', matterId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/matter not found/i);
+  });
+
+  it('returns 404 when contractId does not belong to org (IDOR guard)', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue(null);
+    const res = await request(buildApp())
+      .post('/')
+      .send({ bodyMd: 'note', contractId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/contract not found/i);
+  });
+
+  it('returns 404 when documentId does not belong to org (IDOR guard)', async () => {
+    mockPrisma.document.findFirst.mockResolvedValue(null);
+    const res = await request(buildApp())
+      .post('/')
+      .send({ bodyMd: 'note', documentId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/document not found/i);
+  });
+
   it('creates comment with authorId and organizationId', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'matter-1' }); // org owns it
     mockPrisma.comment.create.mockResolvedValue({ ...sampleComment });
     const res = await request(buildApp('org-1', 'user-7'))
       .post('/')
@@ -216,9 +254,10 @@ describe('error propagation via next(err)', () => {
   });
 
   it('POST / propagates DB errors', async () => {
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: 'clxxxxxxxxxxxxxxxxxxxx' });
     mockPrisma.comment.create.mockRejectedValue(new Error('DB'));
     const res = await request(buildAppWithErrorHandler())
-      .post('/').send({ contractId: 'clxxxxxxxxxxxxxxxxxxxx', bodyMd: 'hi' });
+      .post('/').send({ matterId: 'clxxxxxxxxxxxxxxxxxxxx', bodyMd: 'hi' });
     expect(res.status).toBe(500);
   });
 
