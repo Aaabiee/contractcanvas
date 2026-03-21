@@ -112,20 +112,86 @@ const jwtSecretFromEnv = process.env.JWT_SECRET;
 const jwtSecretFromFile = jwtCfgFromFile.secret;
 let effectiveJwtSecret = jwtSecretFromEnv || jwtSecretFromFile || defaultJwtSecret;
 
-if (app.env === 'production' && (!effectiveJwtSecret || effectiveJwtSecret === defaultJwtSecret)) {
+// ── Production secret validation (OWASP A02 / A05) ────────────────────────
+//
+// Exported so it can be unit-tested in isolation without re-importing the full
+// module (which would drag in dotenv, config.json, Prisma, etc.).
+
+/** Prefixes that identify non-live Stripe keys or placeholder values. */
+export const STRIPE_PLACEHOLDER_PREFIXES = [
+  'sk_test_', 'REPLACE', 'CHANGE', 'YOUR_', 'placeholder', 'CONTRA_',
+];
+
+/** Default JWT secret constant — exported so tests can reference the exact string. */
+export const DEFAULT_JWT_SECRET = '!!CHANGE_ME_IN_CONFIG_OR_ENV!!';
+
+/**
+ * Throw on startup when production secrets are missing, weak, or are
+ * development placeholders.  No-op in non-production environments.
+ *
+ * @throws {Error} with a `FATAL:` prefix for operator-visible boot failure.
+ */
+export function validateProductionConfig(opts: {
+  env: string;
+  jwtSecret: string;
+  stripeSecretKey: string | undefined;
+  s3Endpoint: string | undefined;
+}): void {
+  const { env, jwtSecret, stripeSecretKey, s3Endpoint } = opts;
+
+  if (env !== 'production') return;
+
+  // JWT — must be set and not a placeholder
+  if (!jwtSecret || jwtSecret === DEFAULT_JWT_SECRET) {
+    throw new Error(
+      'FATAL: JWT_SECRET must be set via environment variable or config.json for production!',
+    );
+  }
+  // OWASP A02: 64-char minimum (512-bit entropy for HS256/HS512)
+  if (jwtSecret.length < 64) {
+    throw new Error(
+      'FATAL: JWT_SECRET must be at least 64 characters long in production (OWASP A02).',
+    );
+  }
+
+  // Stripe — must be a live key
+  if (!stripeSecretKey || STRIPE_PLACEHOLDER_PREFIXES.some(p => stripeSecretKey.startsWith(p))) {
+    throw new Error(
+      'FATAL: STRIPE_SECRET_KEY must be a live key (sk_live_…) in production. ' +
+      'Set STRIPE_SECRET_KEY in your environment.',
+    );
+  }
+
+  // S3 — endpoint must not be set (LocalStack / dev override detection)
+  if (s3Endpoint) {
+    throw new Error(
+      'FATAL: S3_ENDPOINT must not be set in production. ' +
+      'Remove S3_ENDPOINT from your environment to use the AWS SDK defaults.',
+    );
+  }
+}
+
+if (app.env === 'production' && (!effectiveJwtSecret || effectiveJwtSecret === DEFAULT_JWT_SECRET)) {
   throw new Error('FATAL: JWT_SECRET must be set via environment variable or config.json for production!');
 }
-if (effectiveJwtSecret !== defaultJwtSecret && effectiveJwtSecret.length < 32) {
+if (effectiveJwtSecret !== DEFAULT_JWT_SECRET && effectiveJwtSecret.length < 32) {
   const msg = 'JWT_SECRET must be at least 32 characters long (OWASP HMAC-SHA256 minimum).';
   if (app.env === 'production') throw new Error(`FATAL: ${msg}`);
   console.warn(`[Config] WARNING: ${msg}`);
 }
-if (app.env !== 'production' && effectiveJwtSecret === defaultJwtSecret) {
+if (app.env !== 'production' && effectiveJwtSecret === DEFAULT_JWT_SECRET) {
   console.warn('\n-------------------------------------------------------------------');
   console.warn('WARNING: Using insecure default JWT_SECRET. Set JWT_SECRET in .env or config.json.');
   console.warn('-------------------------------------------------------------------\n');
 }
 export const jwt: JwtConfig = { secret: effectiveJwtSecret };
+
+validateProductionConfig({
+  env:            app.env,
+  jwtSecret:      effectiveJwtSecret,
+  stripeSecretKey: stripe.secretKey,
+  s3Endpoint:     s3.endpoint,
+});
 
 export const DATABASE_URL =
   `postgresql://${encodeURIComponent(db.user)}:${encodeURIComponent(db.password)}` +
