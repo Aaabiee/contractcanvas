@@ -1,7 +1,6 @@
 ---
 title: Home
-layout: home
-nav_order: 1
+sort: 1
 ---
 
 # ContractCanvas Developer Docs

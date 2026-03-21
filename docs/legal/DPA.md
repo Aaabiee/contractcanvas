@@ -1,7 +1,6 @@
 ---
 title: DPA
-parent: Legal
-nav_order: 3
+sort: 3
 ---
 
 # Data Processing Agreement (DPA)

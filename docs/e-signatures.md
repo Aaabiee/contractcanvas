@@ -1,6 +1,6 @@
 ---
 title: E-Signatures
-nav_order: 8
+sort: 8
 ---
 
 # E-Signature Integration

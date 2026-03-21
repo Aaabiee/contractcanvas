@@ -1,7 +1,6 @@
 ---
 title: Legal
-nav_order: 11
-has_children: true
+sort: 11
 ---
 
 # Legal Documents

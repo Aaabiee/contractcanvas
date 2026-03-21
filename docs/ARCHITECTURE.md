@@ -1,6 +1,6 @@
 ---
 title: Architecture
-nav_order: 3
+sort: 3
 ---
 
 # ContractCanvas — Architecture

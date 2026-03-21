@@ -1,7 +1,6 @@
 ---
 title: Privacy Policy
-parent: Legal
-nav_order: 1
+sort: 1
 ---
 
 # ContractCanvas Privacy Policy

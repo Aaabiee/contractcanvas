@@ -1,7 +1,6 @@
 ---
 title: Terms of Service
-parent: Legal
-nav_order: 2
+sort: 2
 ---
 
 # ContractCanvas Terms of Service

@@ -1,6 +1,6 @@
 ---
 title: Testing
-nav_order: 9
+sort: 9
 ---
 
 # Testing Strategy
