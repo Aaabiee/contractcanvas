@@ -140,6 +140,11 @@ model User {
   name             String?
   role             Role                 @default(CLIENT)
   avatarUrl        String?
+  emailVerifiedAt  DateTime?
+  verifyToken      String?              @unique
+  verifyTokenExp   DateTime?
+  resetToken       String?              @unique
+  resetTokenExp    DateTime?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   deletedAt        DateTime?

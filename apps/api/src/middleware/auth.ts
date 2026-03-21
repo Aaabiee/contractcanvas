@@ -27,6 +27,7 @@ export interface UserClaims {
   orgRole?:       $Enums.OrgRole;
   organizations?: OrgMembership[];
   organizationId?: string;
+  emailVerified?: boolean;
   [k: string]: any;
 }
 
@@ -128,6 +129,10 @@ function toUser(payload: JWTPayload): UserClaims {
     ? (payload as any).organizations
     : undefined;
 
+  const emailVerified = typeof (payload as any).emailVerified === 'boolean'
+    ? (payload as any).emailVerified
+    : undefined;
+
   return {
     id:      sub || String((payload as any).user_id || (payload as any).uid || ''),
     sub,
@@ -139,6 +144,7 @@ function toUser(payload: JWTPayload): UserClaims {
     ...(orgRolesEnum.length ? { orgRoles: dedupe(orgRolesEnum) }   : {}),
     ...(orgRoleEnum        ? { orgRole: orgRoleEnum }              : {}),
     ...(organizations      ? { organizations }                     : {}),
+    ...(emailVerified !== undefined ? { emailVerified }            : {}),
   };
 }
 
@@ -200,6 +206,18 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     user.organizationId = resolveOrganizationId(req, user);
     req.user = user;
   } catch {
+  }
+  next();
+}
+
+export function requireEmailVerified(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  if (req.user.emailVerified === false) {
+    res.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before using this feature.' });
+    return;
   }
   next();
 }

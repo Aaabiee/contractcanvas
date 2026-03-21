@@ -54,7 +54,9 @@ const BASE_PAYLOAD = {
 let _counter = 0;
 function uid() { return `${Date.now()}-${++_counter}`; }
 
-/** Register a unique user+org and return auth credentials. */
+const _seedDb = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL } } });
+
+/** Register a unique user+org, verify their email, and return auth credentials. */
 export async function seedAuth(
   app: Express,
   opts?: { email?: string; orgSlug?: string; orgName?: string }
@@ -72,9 +74,23 @@ export async function seedAuth(
     throw new Error(`seedAuth failed ${res.status}: ${JSON.stringify(res.body)}`);
   }
 
-  const token  = res.body.token as string;
   const userId = res.body.user.id as string;
   const orgId  = res.body.organization.id as string;
+
+  await _seedDb.user.update({
+    where: { id: userId },
+    data:  { emailVerifiedAt: new Date(), verifyToken: null, verifyTokenExp: null },
+  });
+
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email, password: BASE_PAYLOAD.password });
+
+  if (loginRes.status !== 200) {
+    throw new Error(`seedAuth login failed ${loginRes.status}: ${JSON.stringify(loginRes.body)}`);
+  }
+
+  const token = loginRes.body.token as string;
 
   return {
     token,

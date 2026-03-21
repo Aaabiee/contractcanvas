@@ -2,7 +2,7 @@ import express, { Router, Request, Response, NextFunction } from 'express';
 import Stripe from 'stripe';
 import { z } from 'zod';
 import { stripe as stripeConfig } from '../config.js';
-import { protect } from '../middleware/auth.js';
+import { protect, requireEmailVerified } from '../middleware/auth.js';
 
 export const router = Router();
 
@@ -36,7 +36,7 @@ const isStripeActive = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-router.post('/invoice', protect, isStripeActive, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/invoice', protect, requireEmailVerified, isStripeActive, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const validation = CreateIntentSchema.safeParse(req.body);
     if (!validation.success) {

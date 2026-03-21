@@ -45,6 +45,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "multer": "2.0.2",
+    "postmark": "^4.0.7",
     "stripe": "^19.1.0",
     "zod": "^3.25.76"
   },

@@ -1,4 +1,5 @@
 import express, { Router, type RequestHandler } from 'express';
+import { requireEmailVerified } from '../middleware/auth.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import {
@@ -54,7 +55,7 @@ const UploadMetaSchema = z.object({
   kind:      z.enum(['UPLOADED', 'GENERATED', 'SIGNED_PDF', 'ATTACHMENT']).default('UPLOADED'),
 });
 
-router.post('/upload', singleFileUpload, async (req, res, next) => {
+router.post('/upload', requireEmailVerified, singleFileUpload, async (req, res, next) => {
   try {
     const organizationId = req.user?.organizationId;
     if (!organizationId) {

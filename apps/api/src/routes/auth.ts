@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../prisma.js';
 import { jwt as jwtConfig } from '../config.js';
@@ -13,6 +14,7 @@ import {
   REFRESH_COOKIE,
   REFRESH_COOKIE_OPTS,
 } from '../lib/session.js';
+import { sendEmail } from '../services/email.service.js';
 import type { Prisma } from '@prisma/client';
 
 export const router = Router();
@@ -30,7 +32,7 @@ const toPrismaRole = (r?: string): RoleType => {
   return RoleEnum.options.includes(u as RoleType) ? (u as RoleType) : 'CLIENT';
 };
 
-type KnownUser = { id: string; email: string; role: any };
+type KnownUser = { id: string; email: string; role: any; emailVerifiedAt?: Date | null };
 
 async function buildTokenPayload(userId: string, knownUser?: KnownUser) {
   const [user, memberships] = await Promise.all([
@@ -38,7 +40,7 @@ async function buildTokenPayload(userId: string, knownUser?: KnownUser) {
       ? Promise.resolve(knownUser)
       : prisma.user.findUniqueOrThrow({
           where:  { id: userId },
-          select: { id: true, email: true, role: true },
+          select: { id: true, email: true, role: true, emailVerifiedAt: true },
         }),
     prisma.organizationMember.findMany({
       where:   { userId },
@@ -54,7 +56,9 @@ async function buildTokenPayload(userId: string, knownUser?: KnownUser) {
     role: m.role,
   }));
 
-  return { sub: user.id, email: user.email, role: user.role, organizations };
+  const emailVerified = !!(user as any).emailVerifiedAt;
+
+  return { sub: user.id, email: user.email, role: user.role, emailVerified, organizations };
 }
 
 function signAccessToken(payload: object): string {
@@ -67,6 +71,14 @@ function setRefreshCookie(res: Response, raw: string): void {
 
 function clearRefreshCookie(res: Response): void {
   res.clearCookie(REFRESH_COOKIE, { ...REFRESH_COOKIE_OPTS, maxAge: 0 });
+}
+
+function hashToken(raw: string): string {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+function generateToken(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 const OrgModeEnum = z.enum(['create', 'join']);
@@ -136,6 +148,30 @@ const ChangePasswordSchema = z.object({
     .regex(/[^A-Za-z0-9]/, { message: 'New password must contain at least one special character' }),
 });
 
+const ForgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const ResetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string()
+    .min(12,               { message: 'Password must be at least 12 characters' })
+    .regex(/[A-Z]/,        { message: 'Password must contain at least one uppercase letter' })
+    .regex(/[a-z]/,        { message: 'Password must contain at least one lowercase letter' })
+    .regex(/[0-9]/,        { message: 'Password must contain at least one number' })
+    .regex(/[^A-Za-z0-9]/, { message: 'Password must contain at least one special character' }),
+});
+
+async function sendVerificationEmail(email: string, firstName: string, rawToken: string) {
+  const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/verify-email?token=${rawToken}`;
+  await sendEmail({
+    to:       email,
+    subject:  'Verify your ContractCanvas email',
+    htmlBody: `<p>Hi ${firstName},</p><p>Click the link below to verify your email address. This link expires in 24 hours.</p><p><a href="${link}">${link}</a></p>`,
+    textBody: `Hi ${firstName},\n\nVerify your email: ${link}\n\nThis link expires in 24 hours.`,
+  });
+}
+
 router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = RegisterSchema.safeParse(req.body);
@@ -176,10 +212,22 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const rawVerifyToken   = generateToken();
+    const hashedVerifyToken = hashToken(rawVerifyToken);
+    const verifyTokenExp    = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.create({
-        data: { email, passwordHash, firstName, lastName, name: fullName, role },
+        data: {
+          email,
+          passwordHash,
+          firstName,
+          lastName,
+          name: fullName,
+          role,
+          verifyToken:    hashedVerifyToken,
+          verifyTokenExp,
+        },
         select: { id: true, email: true, firstName: true, lastName: true, name: true, role: true, createdAt: true },
       });
 
@@ -202,6 +250,8 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 
       return { user, organization };
     });
+
+    await sendVerificationEmail(result.user.email, result.user.firstName, rawVerifyToken);
 
     const wantsRedirect  = req.query.redirect === '1' || /text\/html/.test(String(req.headers.accept || ''));
     const wantsAutoLogin = req.query.autoLogin === '1';
@@ -229,7 +279,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     }
 
     return res.status(201).json({
-      message:      'Registered successfully.',
+      message:      'Registered successfully. Please verify your email.',
       user:         result.user,
       organization: result.organization,
       redirectTo:   '/login',
@@ -258,7 +308,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const payload = await buildTokenPayload(user.id, { id: user.id, email: user.email, role: user.role });
+    const payload = await buildTokenPayload(user.id, { id: user.id, email: user.email, role: user.role, emailVerifiedAt: user.emailVerifiedAt });
     const token   = signAccessToken(payload);
 
     const rawRefresh = await createSession(user.id, req.ip, req.headers['user-agent']);
@@ -267,12 +317,13 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     res.json({
       token,
       user: {
-        id:        user.id,
-        email:     user.email,
-        firstName: user.firstName,
-        lastName:  user.lastName,
-        name:      user.name,
-        role:      user.role,
+        id:             user.id,
+        email:          user.email,
+        firstName:      user.firstName,
+        lastName:       user.lastName,
+        name:           user.name,
+        role:           user.role,
+        emailVerified:  !!user.emailVerifiedAt,
       },
       organizations: payload.organizations,
     });
@@ -345,6 +396,153 @@ router.post('/change-password', protect, async (req: Request, res: Response, nex
     clearRefreshCookie(res);
 
     res.json({ ok: true, message: 'Password changed. Please log in again.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/verify-email', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rawToken = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!rawToken) {
+      return res.status(400).json({ error: 'Missing verification token' });
+    }
+
+    const hashed = hashToken(rawToken);
+    const user = await prisma.user.findUnique({
+      where: { verifyToken: hashed },
+      select: { id: true, email: true, role: true, verifyTokenExp: true, emailVerifiedAt: true },
+    });
+
+    if (!user || !user.verifyTokenExp || user.verifyTokenExp < new Date()) {
+      return res.status(400).json({ error: 'Verification token is invalid or expired' });
+    }
+
+    if (user.emailVerifiedAt) {
+      return res.status(200).json({ ok: true, message: 'Email already verified' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data:  { emailVerifiedAt: new Date(), verifyToken: null, verifyTokenExp: null },
+    });
+
+    const payload = await buildTokenPayload(user.id, { id: user.id, email: user.email, role: user.role });
+    const token   = signAccessToken(payload);
+
+    res.json({ ok: true, token });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/resend-verification', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where:  { email: parsed.data.email },
+      select: { id: true, email: true, firstName: true, emailVerifiedAt: true, verifyTokenExp: true },
+    });
+
+    if (!user || user.emailVerifiedAt) {
+      return res.status(200).json({ ok: true });
+    }
+
+    const lastSent = user.verifyTokenExp
+      ? user.verifyTokenExp.getTime() - 24 * 60 * 60 * 1000
+      : 0;
+    const hoursSinceLast = (Date.now() - lastSent) / (60 * 60 * 1000);
+    if (hoursSinceLast < 8) {
+      return res.status(429).json({ error: 'Please wait before requesting another verification email' });
+    }
+
+    const rawToken      = generateToken();
+    const hashedToken   = hashToken(rawToken);
+    const verifyTokenExp = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data:  { verifyToken: hashedToken, verifyTokenExp },
+    });
+
+    await sendVerificationEmail(user.email, user.firstName, rawToken);
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/forgot-password', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = ForgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where:  { email: parsed.data.email },
+      select: { id: true, email: true, firstName: true },
+    });
+
+    if (user) {
+      const rawToken     = generateToken();
+      const hashedToken  = hashToken(rawToken);
+      const resetTokenExp = new Date(Date.now() + 60 * 60 * 1000);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data:  { resetToken: hashedToken, resetTokenExp },
+      });
+
+      const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/reset-password?token=${rawToken}`;
+      await sendEmail({
+        to:       user.email,
+        subject:  'Reset your ContractCanvas password',
+        htmlBody: `<p>Hi ${user.firstName},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${link}">${link}</a></p><p>If you did not request a password reset, you can ignore this email.</p>`,
+        textBody: `Hi ${user.firstName},\n\nReset your password: ${link}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.`,
+      });
+    }
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/reset-password', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = ResetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
+    }
+
+    const { token, newPassword } = parsed.data;
+    const hashed = hashToken(token);
+
+    const user = await prisma.user.findUnique({
+      where:  { resetToken: hashed },
+      select: { id: true, resetTokenExp: true },
+    });
+
+    if (!user || !user.resetTokenExp || user.resetTokenExp < new Date()) {
+      return res.status(400).json({ error: 'Password reset token is invalid or expired' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data:  { passwordHash: newHash, resetToken: null, resetTokenExp: null },
+    });
+
+    await revokeAllUserSessions(user.id);
+
+    res.json({ ok: true, message: 'Password reset successfully. Please log in.' });
   } catch (err) {
     next(err);
   }
