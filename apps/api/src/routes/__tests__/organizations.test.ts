@@ -32,6 +32,7 @@ const mockPrisma = {
   $transaction: vi.fn(),
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
+vi.mock('../../services/usage.service.js', () => ({ checkMemberLimit: vi.fn().mockResolvedValue(undefined) }));
 
 const mockRevokeAllUserSessions = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../lib/session.js', () => ({

@@ -36,6 +36,9 @@ vi.mock('../../lib/session.js', () => ({
   REFRESH_COOKIE_OPTS:    { httpOnly: true, secure: false, sameSite: 'strict', path: '/api/auth', maxAge: 2592000000 },
 }));
 
+vi.mock('../../services/email.service.js', () => ({ sendEmail: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../queues/index.js', () => ({ emailQueue: null }));
+
 vi.mock('../../middleware/auth.js', () => ({
   protect: (req: any, _res: any, next: any) => {
     req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'] };
@@ -387,6 +390,7 @@ describe('POST /api/auth/register — transaction callback executed', () => {
         user: { create: vi.fn().mockResolvedValue(newUser) },
         organization: { create: vi.fn().mockResolvedValue(newOrg) },
         organizationMember: { create: vi.fn().mockResolvedValue({}) },
+        subscription: { create: vi.fn().mockResolvedValue({}) },
       };
       return fn(tx);
     });

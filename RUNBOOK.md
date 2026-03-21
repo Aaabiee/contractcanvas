@@ -12,9 +12,9 @@
 ## Database Backups
 
 ### Schedule
-Daily backups run at **02:00 UTC** via `infra/scripts/backup.sh`. Backups are stored at:
+Daily backups run at **02:00 UTC** via `infra/scripts/backup.ts`. Backups are stored at:
 
-```
+```text
 s3://<BACKUP_BUCKET>/backups/daily/contractcanvas-YYYYMMDD.sql.gz
 ```
 
@@ -111,12 +111,12 @@ Symptom: `too many connections` errors in logs.
 
 ## Scheduled Maintenance
 
-| Task                     | Frequency | Tool                            |
-|--------------------------|-----------|---------------------------------|
-| Database backup          | Daily     | `infra/scripts/backup.sh`       |
+| Task                     | Frequency | Tool                                  |
+|--------------------------|-----------|---------------------------------------|
+| Database backup          | Daily     | `infra/scripts/backup.ts`             |
 | Backup verification      | Weekly    | `.github/workflows/backup-verify.yml` |
-| Expired session cleanup  | Daily     | BullMQ cleanupQueue             |
-| Retention policy sweep   | Weekly    | BullMQ cleanupQueue             |
+| Expired session cleanup  | Daily     | BullMQ cleanupQueue                   |
+| Retention policy sweep   | Weekly    | BullMQ cleanupQueue                   |
 
 ---
 
@@ -137,3 +137,95 @@ For production, replace self-hosted Postgres with:
 - **Supabase** (includes PITR, connection pooling via Supavisor)
 
 Simply update `DATABASE_URL` — no code changes required.
+
+---
+
+## CI/CD Environment Secrets
+
+Each environment (dev, qa, prod) should have its own namespaced secrets. Do **not** share secrets across environments.
+
+### GitHub Secrets Setup
+
+1. Go to repo Settings > Environments > create `dev`, `qa`, `prod`
+2. Add these secrets per environment:
+
+```text
+{ENV}_HOST, {ENV}_USER, {ENV}_SSH_KEY
+{ENV}_POSTGRES_USER, {ENV}_POSTGRES_PASSWORD, {ENV}_POSTGRES_DB
+{ENV}_JWT_SECRET, {ENV}_S3_ACCESS_KEY, {ENV}_S3_SECRET_KEY
+{ENV}_STRIPE_SECRET_KEY, {ENV}_STRIPE_WEBHOOK_SECRET (qa/prod only)
+SENTRY_DSN (same across envs, tagged by NODE_ENV)
+```
+
+1. Add environment variables (not secrets):
+
+```text
+{ENV}_URL, {ENV}_API_URL
+```
+
+### Sentry Setup
+
+1. Create a Sentry project at sentry.io
+2. Copy the DSN and add as `SENTRY_DSN` in GitHub Secrets
+3. Configure alert rules in Sentry dashboard:
+   - Alert on `unhandled_rejection` events
+   - Alert when error count > 10 in 5 minutes
+   - Route alerts to PagerDuty/Slack/email
+
+### Stripe Dashboard Setup
+
+1. Create products and prices at dashboard.stripe.com/products:
+   - Starter: $29/mo (`STRIPE_PRICE_STARTER`)
+   - Professional: $99/mo (`STRIPE_PRICE_PROFESSIONAL`)
+   - Enterprise: custom pricing
+2. Configure Customer Portal at dashboard.stripe.com/settings/billing/portal:
+   - Enable plan switching
+   - Enable cancellation
+   - Enable payment method update
+   - Enable invoice history
+3. Set webhook endpoint to `{API_URL}/api/billing/webhook`
+4. Subscribe to events: `customer.subscription.*`, `invoice.*`
+
+### WAL Archiving (PostgreSQL)
+
+For point-in-time recovery, configure WAL archiving:
+
+```text
+wal_level = replica
+archive_mode = on
+archive_command = 'aws s3 cp %p s3://BACKUP_BUCKET/wal/%f'
+```
+
+Set in `postgresql.conf` or via environment variables on the container.
+
+### S3 Lifecycle Policy
+
+Apply the lifecycle policy for backup rotation:
+
+```bash
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket <BACKUP_BUCKET> \
+  --lifecycle-configuration file://infra/s3-lifecycle.json
+```
+
+### Load Testing
+
+Before production launch, run a load test with 50 concurrent users:
+
+1. Use a tool like k6, Artillery, or Locust
+2. Target the health endpoint, auth flow, and CRUD operations
+3. Monitor PgBouncer pool stats for connection exhaustion
+4. Verify response times under load (p95 < 500ms target)
+
+### Log Transport
+
+Set `LOG_TRANSPORT` env var to route structured logs:
+
+| Value        | Destination    | Required Env Vars                     |
+| ------------ | -------------- | ------------------------------------- |
+| (unset)      | JSON stdout    | none                                  |
+| `datadog`    | Datadog        | `DD_API_KEY`                          |
+| `cloudwatch` | AWS CloudWatch | `CW_LOG_GROUP`, `AWS_DEFAULT_REGION`  |
+| `loki`       | Grafana Loki   | `LOKI_URL`                            |
+
+Install the corresponding npm package before use (e.g., `npm i pino-datadog-transport`).

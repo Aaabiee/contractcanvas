@@ -24,6 +24,8 @@ const mockPrisma = {
   },
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
+vi.mock('../../lib/audit.js', () => ({ writeAuditLog: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../services/usage.service.js', () => ({ checkMatterLimit: vi.fn().mockResolvedValue(undefined) }));
 
 const { router } = await import('../matters.js');
 
