@@ -1,13 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, Subject, throwError } from 'rxjs';
+import { signal } from '@angular/core';
 import { MatterDetailComponent } from './matter-detail.component';
 import { MatterService, Matter } from '../../services/matter.service';
 import { ContractService } from '../../services/contract.service';
 import { DocumentService } from '../../services/document.service';
 import { TaskService } from '../../services/task.service';
+import { CommentService } from '../../services/comment.service';
+import { AuthService } from '../../services/auth.service';
 
 const mockMatter: Matter = {
   id: 'm1', title: 'Test Matter', status: 'OPEN', description: 'Test description',
@@ -33,6 +37,18 @@ class MockTaskService {
   reopenTask    = jest.fn(() => of({ id: 't1', completedAt: null }));
 }
 
+class MockCommentService {
+  getComments = jest.fn(() => of({ data: [], total: 0, limit: 100, offset: 0 }));
+  createComment = jest.fn(() => of({}));
+  updateComment = jest.fn(() => of({}));
+  deleteComment = jest.fn(() => of(undefined));
+}
+
+class MockAuthService {
+  currentUser = signal<any>(null);
+  silentRefresh = () => of(false);
+}
+
 describe('MatterDetailComponent', () => {
   let component: MatterDetailComponent;
   let fixture: ComponentFixture<MatterDetailComponent>;
@@ -44,13 +60,16 @@ describe('MatterDetailComponent', () => {
     await TestBed.configureTestingModule({
       imports: [MatterDetailComponent, NoopAnimationsModule],
       providers: [
+        provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
-        { provide: MatterService,  useClass: MockMatterService  },
-        { provide: ContractService, useClass: MockContractService },
-        { provide: DocumentService, useClass: MockDocumentService },
-        { provide: TaskService,    useClass: MockTaskService    },
-        { provide: ActivatedRoute, useValue: { paramMap: paramMapSubject.asObservable() } },
+        { provide: MatterService,   useClass: MockMatterService   },
+        { provide: ContractService, useClass: MockContractService  },
+        { provide: DocumentService, useClass: MockDocumentService  },
+        { provide: TaskService,     useClass: MockTaskService      },
+        { provide: CommentService,  useClass: MockCommentService   },
+        { provide: AuthService,     useClass: MockAuthService      },
+        { provide: ActivatedRoute,  useValue: { paramMap: paramMapSubject.asObservable() } },
       ],
     }).compileComponents();
 

@@ -1,9 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, Subject } from 'rxjs';
+import { signal } from '@angular/core';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ContractDetailComponent } from './contract-detail.component';
 import { ContractService, Contract, ContractVersion } from '../../services/contract.service';
+import { CommentService } from '../../services/comment.service';
+import { AuthService } from '../../services/auth.service';
 
 const mockContract: Contract = {
   id: 'c1', title: 'NDA Agreement', status: 'DRAFT',
@@ -25,6 +30,18 @@ class MockContractService {
   });
 }
 
+class MockCommentService {
+  getComments   = jest.fn(() => of({ data: [], total: 0, limit: 100, offset: 0 }));
+  createComment = jest.fn(() => of({}));
+  updateComment = jest.fn(() => of({}));
+  deleteComment = jest.fn(() => of(undefined));
+}
+
+class MockAuthService {
+  currentUser = signal<any>(null);
+  silentRefresh = () => of(false);
+}
+
 describe('ContractDetailComponent', () => {
   let component: ContractDetailComponent;
   let fixture: ComponentFixture<ContractDetailComponent>;
@@ -34,11 +51,14 @@ describe('ContractDetailComponent', () => {
   async function setup() {
     paramMapSubject = new Subject();
     await TestBed.configureTestingModule({
-      imports: [ContractDetailComponent],
+      imports: [ContractDetailComponent, NoopAnimationsModule],
       providers: [
+        provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
         { provide: ContractService, useClass: MockContractService },
+        { provide: CommentService,  useClass: MockCommentService  },
+        { provide: AuthService,     useClass: MockAuthService     },
         { provide: ActivatedRoute, useValue: { paramMap: paramMapSubject.asObservable() } },
       ],
     }).compileComponents();

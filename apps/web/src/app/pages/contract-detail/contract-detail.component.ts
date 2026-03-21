@@ -2,6 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ContractService, Contract, ContractVersion } from '../../services/contract.service';
+import { CommentsComponent } from '../../components/comments/comments.component';
 import { Observable, of, forkJoin } from 'rxjs';
 import { switchMap, catchError } from 'rxjs/operators';
 
@@ -13,7 +14,7 @@ export interface ContractWithVersions {
 @Component({
   selector: 'app-contract-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, CommentsComponent],
   templateUrl: './contract-detail.component.html',
   styleUrls: ['./contract-detail.component.css'],
 })

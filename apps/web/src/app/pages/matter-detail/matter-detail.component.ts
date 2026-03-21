@@ -13,6 +13,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatterService, Matter } from '../../services/matter.service';
+import { CommentsComponent } from '../../components/comments/comments.component';
 import { ContractService, Contract } from '../../services/contract.service';
 import { DocumentService, Document } from '../../services/document.service';
 import { TaskService, Task } from '../../services/task.service';
@@ -32,7 +33,7 @@ export interface MatterData {
     CommonModule, RouterLink, ReactiveFormsModule,
     MatTabsModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatFormFieldModule, MatInputModule,
-    MatCheckboxModule,
+    MatCheckboxModule, CommentsComponent,
   ],
   templateUrl: './matter-detail.component.html',
   styleUrls: ['./matter-detail.component.css'],
