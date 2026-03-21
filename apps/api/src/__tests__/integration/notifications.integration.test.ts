@@ -1,0 +1,177 @@
+/**
+ * Integration tests for /api/notifications.
+ * Runs against a real PostgreSQL container — no Prisma mocks.
+ */
+
+import request from 'supertest';
+import { PrismaClient } from '@prisma/client';
+import { buildApp, seedAuth, cleanDb } from './helpers.js';
+
+const db  = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL } } });
+const app = buildApp();
+
+afterEach(() => cleanDb(db));
+afterAll(()  => db.$disconnect());
+
+/** Directly inserts a notification row for testing. */
+async function seedNotification(
+  userId: string,
+  orgId:  string,
+  title:  string,
+  readAt?: Date
+) {
+  return db.notification.create({
+    data: {
+      userId,
+      organizationId: orgId,
+      type:           'SYSTEM',
+      title,
+      readAt:         readAt ?? null,
+    },
+  });
+}
+
+// ─── GET /api/notifications ──────────────────────────────────────────────────
+describe('GET /api/notifications', () => {
+  it('returns 401 without auth', async () => {
+    expect((await request(app).get('/api/notifications')).status).toBe(401);
+  });
+
+  it('returns empty list when no notifications exist', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+    expect(res.body.unreadCount).toBe(0);
+  });
+
+  it('returns notifications scoped to the current user', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+
+    await seedNotification(a.userId, a.orgId, 'Hello A');
+    await seedNotification(b.userId, b.orgId, 'Hello B');
+
+    const resA = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader);
+
+    const resB = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(resA.body.data).toHaveLength(1);
+    expect(resA.body.data[0].title).toBe('Hello A');
+    expect(resB.body.data).toHaveLength(1);
+  });
+
+  it('filters to unread when unread=true', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    await seedNotification(userId, orgId, 'Unread 1');
+    await seedNotification(userId, orgId, 'Already Read', new Date());
+
+    const res = await request(app)
+      .get('/api/notifications?unread=true')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Unread 1');
+  });
+
+  it('returns correct unreadCount', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    await seedNotification(userId, orgId, 'Unread 1');
+    await seedNotification(userId, orgId, 'Unread 2');
+    await seedNotification(userId, orgId, 'Read One', new Date());
+
+    const res = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.body.total).toBe(3);
+    expect(res.body.unreadCount).toBe(2);
+  });
+});
+
+// ─── PATCH /api/notifications/:id/read ──────────────────────────────────────
+describe('PATCH /api/notifications/:id/read', () => {
+  it('marks a single notification as read', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    const n = await seedNotification(userId, orgId, 'Mark me');
+
+    const res = await request(app)
+      .patch(`/api/notifications/${n.id}/read`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.readAt).not.toBeNull();
+
+    const dbRecord = await db.notification.findUnique({ where: { id: n.id } });
+    expect(dbRecord!.readAt).not.toBeNull();
+  });
+
+  it("returns 404 for a notification that belongs to another user", async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const n = await seedNotification(a.userId, a.orgId, 'For A only');
+
+    const res = await request(app)
+      .patch(`/api/notifications/${n.id}/read`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for non-existent notification', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/notifications/cuid1234567890abcdefghijk/read')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── PATCH /api/notifications/read-all ──────────────────────────────────────
+describe('PATCH /api/notifications/read-all', () => {
+  it('marks all unread notifications as read and returns count', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    await seedNotification(userId, orgId, 'N1');
+    await seedNotification(userId, orgId, 'N2');
+    await seedNotification(userId, orgId, 'N3 already read', new Date());
+
+    const res = await request(app)
+      .patch('/api/notifications/read-all')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.updated).toBe(2);
+
+    const remaining = await db.notification.count({ where: { userId, readAt: null } });
+    expect(remaining).toBe(0);
+  });
+
+  it('returns ok: true with updated: 0 when no unread notifications', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/notifications/read-all')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(0);
+  });
+});

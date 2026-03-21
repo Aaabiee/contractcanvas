@@ -7,19 +7,28 @@
  * Steps:
  *  1. Ensure Docker is reachable (set DOCKER_HOST if needed)
  *  2. Boot a real PostgreSQL container via Testcontainers
- *  3. Set the POSTGRES_* env vars that config.ts assembles into DATABASE_URL
- *  4. Run `prisma migrate deploy` against the live container
+ *  3. Boot a real MinIO container for S3 integration tests
+ *  4. Set all env vars (POSTGRES_*, S3_*, JWT_SECRET)
+ *  5. Create the S3 test bucket
+ *  6. Run `prisma db push` against the live container
  */
 
-import { execSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+import { execSync }           from 'node:child_process';
+import { fileURLToPath }      from 'node:url';
+import path                   from 'node:path';
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { GenericContainer, StartedTestContainer, Wait }   from 'testcontainers';
+import { S3Client, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 
 // Resolve the apps/api root regardless of the process cwd
 const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
-let container: StartedPostgreSqlContainer;
+let pgContainer:    StartedPostgreSqlContainer;
+let minioContainer: StartedTestContainer;
+
+const MINIO_ACCESS_KEY = 'testAccessKey';
+const MINIO_SECRET_KEY = 'testSecretKey';
+const MINIO_BUCKET     = 'contractcanvas-test';
 
 export async function setup(): Promise<void> {
   // Testcontainers may not auto-detect the socket on macOS Docker Desktop
@@ -29,42 +38,74 @@ export async function setup(): Promise<void> {
 
   process.env['NODE_ENV'] = 'test';
 
-  container = await new PostgreSqlContainer('postgres:16-alpine')
-    .withDatabase('contractcanvas_test')
-    .withUsername('test')
-    .withPassword('test')
-    .start();
+  // Boot PostgreSQL and MinIO in parallel
+  [pgContainer, minioContainer] = await Promise.all([
+    new PostgreSqlContainer('postgres:16-alpine')
+      .withDatabase('contractcanvas_test')
+      .withUsername('test')
+      .withPassword('test')
+      .start(),
 
-  const host = container.getHost();
-  const port = container.getMappedPort(5432);
-  const url  = container.getConnectionUri();
+    new GenericContainer('minio/minio:latest')
+      .withExposedPorts(9000)
+      .withEnvironment({
+        MINIO_ROOT_USER:     MINIO_ACCESS_KEY,
+        MINIO_ROOT_PASSWORD: MINIO_SECRET_KEY,
+      })
+      .withCommand(['server', '/data'])
+      .withWaitStrategy(Wait.forHttp('/minio/health/live', 9000).forStatusCode(200))
+      .start(),
+  ]);
 
-  // config.ts builds DATABASE_URL from individual POSTGRES_* vars —
-  // set all of them so the route's prisma singleton uses the test container.
-  process.env['POSTGRES_HOST']     = host;
-  process.env['POSTGRES_PORT']     = String(port);
+  // ── PostgreSQL env vars ──────────────────────────────────────────────────
+  const pgUrl = pgContainer.getConnectionUri();
+  process.env['POSTGRES_HOST']     = pgContainer.getHost();
+  process.env['POSTGRES_PORT']     = String(pgContainer.getMappedPort(5432));
   process.env['POSTGRES_USER']     = 'test';
   process.env['POSTGRES_PASSWORD'] = 'test';
   process.env['POSTGRES_DB']       = 'contractcanvas_test';
+  process.env['DATABASE_URL']      = pgUrl;
+  process.env['TEST_DATABASE_URL'] = pgUrl;
 
-  // Also expose the full URI for the test file's own PrismaClient
-  process.env['DATABASE_URL']      = url;
-  process.env['TEST_DATABASE_URL'] = url;
+  // ── MinIO (S3) env vars ──────────────────────────────────────────────────
+  const minioPort     = minioContainer.getMappedPort(9000);
+  const minioEndpoint = `http://localhost:${minioPort}`;
+  process.env['S3_ENDPOINT']         = minioEndpoint;
+  process.env['S3_ACCESS_KEY']       = MINIO_ACCESS_KEY;
+  process.env['S3_SECRET_KEY']       = MINIO_SECRET_KEY;
+  process.env['S3_BUCKET']           = MINIO_BUCKET;
+  process.env['S3_REGION']           = 'us-east-1';
+  process.env['S3_FORCE_PATH_STYLE'] = 'true';
+  process.env['TEST_S3_ENDPOINT']    = minioEndpoint;
 
-  // JWT secret used by both the route (signing) and protect middleware (verifying)
+  // Create the test bucket
+  const s3 = new S3Client({
+    endpoint:        minioEndpoint,
+    region:          'us-east-1',
+    forcePathStyle:  true,
+    credentials: { accessKeyId: MINIO_ACCESS_KEY, secretAccessKey: MINIO_SECRET_KEY },
+  });
+
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: MINIO_BUCKET }));
+  } catch {
+    await s3.send(new CreateBucketCommand({ Bucket: MINIO_BUCKET }));
+  }
+
+  // ── JWT secret ───────────────────────────────────────────────────────────
   process.env['JWT_SECRET'] = 'integration-test-secret-minimum-32-chars!!';
 
-  // Apply schema to the live container before any tests run.
-  // db push is used instead of migrate deploy so that it works even when
-  // the Prisma migration history table isn't pre-seeded, and avoids
-  // interactive prompts. stdio:'inherit' surfaces errors in CI logs.
+  // ── Apply schema to the live DB ──────────────────────────────────────────
   execSync('npx prisma db push --skip-generate --accept-data-loss', {
     cwd: apiRoot,
-    env: { ...process.env, DATABASE_URL: url },
+    env: { ...process.env, DATABASE_URL: pgUrl },
     stdio: 'inherit',
   });
 }
 
 export async function teardown(): Promise<void> {
-  await container?.stop();
+  await Promise.all([
+    pgContainer?.stop(),
+    minioContainer?.stop(),
+  ]);
 }
