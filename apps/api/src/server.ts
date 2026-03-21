@@ -22,6 +22,11 @@ import healthRouter from './routes/health.js';
 import { startReminderScheduler } from './lib/reminder-scheduler.js';
 import { protect } from './middleware/auth.js';
 import { applySecurityHeaders } from './middleware/security.js';
+import { initQueues, getQueues } from './queues/index.js';
+import { startEmailWorker } from './queues/email.worker.js';
+import { startWebhookWorker } from './queues/webhook.worker.js';
+import { startPdfWorker } from './queues/pdf.worker.js';
+import { startCleanupWorker } from './queues/cleanup.worker.js';
 
 const app = express();
 
@@ -59,10 +64,21 @@ const apiLimiter = rateLimit({
   max:             300,
   standardHeaders: true,
   legacyHeaders:   false,
+  skip:            (req) => !!req.header('x-api-key'),
   message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
-app.use('/api/', apiLimiter);
+const apiKeyLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000,
+  max:             1000,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  keyGenerator:    (req) => req.header('x-api-key') ?? req.ip ?? 'unknown',
+  skip:            (req) => !req.header('x-api-key'),
+  message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
+});
+
+app.use('/api/', apiKeyLimiter, apiLimiter);
 app.use('/api/billing', billing);
 
 app.use(express.json({ limit: '1mb' }));
@@ -117,6 +133,43 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 if (process.env['NODE_ENV'] !== 'test') {
   startReminderScheduler();
+
+  if (process.env['REDIS_URL']) {
+    initQueues();
+
+    const emailWorker   = startEmailWorker();
+    const webhookWorker = startWebhookWorker();
+    const pdfWorker     = startPdfWorker();
+    const cleanupWorker = startCleanupWorker();
+
+    const { createBullBoard } = await import('@bull-board/api');
+    const { BullMQAdapter }   = await import('@bull-board/api/bullMQAdapter');
+    const { ExpressAdapter }  = await import('@bull-board/express');
+
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath('/admin/queues');
+
+    createBullBoard({
+      queues:        getQueues().map(q => new BullMQAdapter(q)),
+      serverAdapter,
+    });
+
+    const ADMIN_TOKEN = process.env['ADMIN_QUEUE_TOKEN'];
+    app.use('/admin/queues', (req, res, next) => {
+      if (!ADMIN_TOKEN) { res.status(503).json({ error: 'Queue admin not configured' }); return; }
+      if (req.headers['x-admin-token'] !== ADMIN_TOKEN) { res.status(401).json({ error: 'unauthorized' }); return; }
+      next();
+    }, serverAdapter.getRouter());
+
+    logger.info('BullMQ workers and Bull Board initialized');
+
+    process.on('exit', () => {
+      emailWorker?.close();
+      webhookWorker?.close();
+      pdfWorker?.close();
+      cleanupWorker?.close();
+    });
+  }
 }
 
 const server = app.listen(port, () => {

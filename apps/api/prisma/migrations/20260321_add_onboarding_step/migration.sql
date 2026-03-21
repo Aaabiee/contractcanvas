@@ -1,0 +1,10 @@
+CREATE TYPE "OnboardingStep" AS ENUM (
+  'VERIFY_EMAIL',
+  'CUSTOMIZE_ORG',
+  'CREATE_MATTER',
+  'INVITE_MEMBER',
+  'UPLOAD_DOCUMENT',
+  'DONE'
+);
+
+ALTER TABLE "User" ADD COLUMN "onboardingStep" "OnboardingStep" NOT NULL DEFAULT 'VERIFY_EMAIL';

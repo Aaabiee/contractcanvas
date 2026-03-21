@@ -1,0 +1,65 @@
+name: Backup Verification
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  verify-backup:
+    name: Restore and verify latest backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     verify_user
+          POSTGRES_PASSWORD: verify_pass
+          POSTGRES_DB:       verify_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U verify_user"
+          --health-interval=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Download latest backup
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          aws s3 cp "s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/daily/contractcanvas-${DATE}.sql.gz" /tmp/backup.sql.gz || \
+          aws s3 cp "$(aws s3 ls s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/daily/ | sort | tail -1 | awk '{print "s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/daily/"$4}')" /tmp/backup.sql.gz
+
+      - name: Restore backup
+        env:
+          PGPASSWORD: verify_pass
+        run: |
+          gunzip -c /tmp/backup.sql.gz | psql -h localhost -U verify_user -d verify_db
+
+      - name: Verify schema integrity
+        run: |
+          npm ci --workspace=apps/api
+          cd apps/api && npx prisma migrate status --schema=prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://verify_user:verify_pass@localhost:5432/verify_db
+
+      - name: Report row counts
+        env:
+          PGPASSWORD: verify_pass
+        run: |
+          psql -h localhost -U verify_user -d verify_db -c "
+            SELECT schemaname, relname AS table_name, n_live_tup AS estimated_rows
+            FROM pg_stat_user_tables
+            ORDER BY n_live_tup DESC;
+          "

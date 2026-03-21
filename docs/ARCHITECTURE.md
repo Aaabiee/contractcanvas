@@ -9,12 +9,16 @@
                           │  :80  (prod) │
                           └──────┬───────┘
                                  │ HTTPS / REST + SSE
-                                 │ Authorization: Bearer <JWT>
+                                 │ Authorization: Bearer <JWT> | x-api-key
                                  ▼
-                          ┌─────────────┐      ┌──────────────┐
-                          │  Express API │─────▶│  PostgreSQL  │
-                          │   :3333      │      │  (Prisma 5)  │
-                          └──────┬───────┘      └──────────────┘
+                          ┌─────────────────┐
+                          │   PgBouncer     │  (transaction pool, port 5432)
+                          └──────┬──────────┘
+                                 │
+                          ┌──────▼──────────┐      ┌──────────────────┐
+                          │   Express API    │─────▶│   PostgreSQL 16  │
+                          │   :3333          │      │   (Prisma 5)     │
+                          └──────┬──────────┘      └──────────────────┘
                                  │
                ┌─────────────────┼──────────────────┐
                │                 │                  │
@@ -23,13 +27,17 @@
         │   Redis    │   │  MinIO / S3   │   │    Stripe     │
         │  :6379     │   │  :9000        │   │  (webhooks    │
         │ (blacklist │   │  (documents,  │   │   inbound at  │
-        │  + future  │   │   signed PDFs)│   │ /api/billing) │
-        │  BullMQ)   │   └───────────────┘   └───────────────┘
+        │  + BullMQ  │   │   signed PDFs)│   │ /api/billing) │
+        │  queues)   │   └───────────────┘   └───────────────┘
         └────────────┘
 
-  Outbound webhooks: API ──HMAC-SHA256──▶ customer HTTPS endpoints
+  BullMQ queues: emailQueue · webhookQueue · pdfQueue · cleanupQueue
+  Bull Board:    GET /admin/queues  (requires X-Admin-Token header)
+  Outbound webhooks: API ──HMAC-SHA256──▶ customer HTTPS endpoints (via webhookQueue)
   Reminder scheduler: node-cron (in-process, fires inside the API)
   Error tracking: Sentry (initialized before any middleware in server.ts)
+  Analytics:     GET /api/analytics/overview + /contract-trends
+  Onboarding:    PATCH /api/users/me/onboarding (OnboardingStep enum)
 ```
 
 ---
@@ -38,7 +46,7 @@
 
 ### Session-based (browser clients)
 
-1. **Register** — `POST /api/auth/register`: password is bcrypt-hashed, a `User` and initial `Session` row are created. An opaque 32-byte refresh token is generated; its SHA-256 hash is stored on the `Session` row. The raw token is set in a `Set-Cookie` header: `HttpOnly`, `Secure` (production), `SameSite=Strict`, `Path=/api/auth`, `Max-Age=30 days`. A verification email containing a one-time token is sent.
+1. **Register** — `POST /api/auth/register`: password is bcrypt-hashed, a `User` and `Organization` are created in a transaction. For new orgs (`orgMode=create`), a `Subscription` record is auto-created (`tier=STARTER`, `status=trialing`, `trialEndsAt=+14 days`). An opaque 32-byte refresh token is generated; its SHA-256 hash is stored on the `Session` row. The raw token is set in a `Set-Cookie` header: `HttpOnly`, `Secure` (production), `SameSite=Strict`, `Path=/api/auth`, `Max-Age=30 days`. A verification email is enqueued via BullMQ `emailQueue`.
 
 2. **Email verification** — `GET /api/auth/verify-email?token=<raw>`: the token is hashed, matched against `User.verifyToken`, and the `emailVerifiedAt` timestamp is set. A new JWT is issued with `emailVerified: true`.
 

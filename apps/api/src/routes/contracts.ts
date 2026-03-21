@@ -3,21 +3,31 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../prisma.js';
 import { generateContractPdf } from '../services/pdf.service.js';
+import { requireActiveSubscription } from './billing.js';
+import { webhookQueue } from '../queues/index.js';
+
+function enqueueWebhook(organizationId: string, event: string, payload: object): void {
+  if (webhookQueue) {
+    webhookQueue.add(event, { organizationId, event, payload }).catch(() => {});
+  }
+}
 
 export const router = Router();
+
+const CurrencyCode = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter ISO 4217 code').optional();
 
 const CreateContractSchema = z.object({
   title:      z.string().min(1),
   matterId:   z.string().cuid(),
   valueCents: z.number().int().optional(),
-  currency:   z.string().optional(),
+  currency:   CurrencyCode,
 });
 
 const UpdateContractSchema = z.object({
   title:      z.string().min(1).optional(),
   status:     z.enum(['DRAFT', 'NEGOTIATION', 'PENDING_SIGNATURE', 'EXECUTED', 'ARCHIVED']).optional(),
   valueCents: z.number().int().optional().nullable(),
-  currency:   z.string().optional(),
+  currency:   CurrencyCode,
 });
 
 const CreateVersionSchema = z.object({
@@ -138,6 +148,15 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
     }
 
     const updatedContract = await prisma.contract.update({ where: { id }, data: validation.data });
+
+    if (validation.data.status && validation.data.status !== existing.status) {
+      enqueueWebhook(organizationId, 'contract.status_changed', {
+        contractId: id,
+        oldStatus:  existing.status,
+        newStatus:  validation.data.status,
+      });
+    }
+
     res.json(updatedContract);
   } catch (error) {
     next(error);
@@ -240,7 +259,7 @@ router.get('/:contractId/versions', async (req: Request, res: Response, next: Ne
   }
 });
 
-router.post('/:id/generate-pdf', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:id/generate-pdf', requireActiveSubscription, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const organizationId = orgGuard(req, res);
     if (!organizationId) return;

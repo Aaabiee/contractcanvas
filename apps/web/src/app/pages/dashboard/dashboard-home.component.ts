@@ -179,6 +179,7 @@ export class DashboardHomeComponent implements OnInit, AfterViewInit {
     { icon: 'add',             label: 'New Matter',    tip: 'Create a new matter',   to: '/matters' },
     { icon: 'assignment_add',  label: 'New Contract',  tip: 'Create a contract',     to: '/contracts' },
     { icon: 'task_alt',        label: 'View Tasks',    tip: 'View all tasks',         to: '/tasks' },
+    { icon: 'bar_chart',       label: 'Analytics',     tip: 'View analytics',         to: '/analytics' },
     { icon: 'credit_card',     label: 'Billing',       tip: 'Billing & invoices',    to: '/billing' },
     { icon: 'business',        label: 'Org Settings',  tip: 'Manage organization',   to: '/settings/organization' },
   ]);

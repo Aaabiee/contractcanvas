@@ -1,5 +1,8 @@
 import express, { Router, type RequestHandler } from 'express';
 import { requireEmailVerified } from '../middleware/auth.js';
+import { requireActiveSubscription } from './billing.js';
+import { writeAuditLog } from '../lib/audit.js';
+import { webhookQueue } from '../queues/index.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import {
@@ -55,7 +58,7 @@ const UploadMetaSchema = z.object({
   kind:      z.enum(['UPLOADED', 'GENERATED', 'SIGNED_PDF', 'ATTACHMENT']).default('UPLOADED'),
 });
 
-router.post('/upload', requireEmailVerified, singleFileUpload, async (req, res, next) => {
+router.post('/upload', requireEmailVerified, requireActiveSubscription, singleFileUpload, async (req, res, next) => {
   try {
     const organizationId = req.user?.organizationId;
     if (!organizationId) {
@@ -106,6 +109,14 @@ router.post('/upload', requireEmailVerified, singleFileUpload, async (req, res, 
         kind:      metadata.kind,
       },
     });
+
+    if (webhookQueue) {
+      webhookQueue.add('document.uploaded', {
+        organizationId,
+        event:   'document.uploaded',
+        payload: { documentId: document.id, filename: document.filename, matterId: document.matterId },
+      }).catch(() => {});
+    }
 
     res.status(201).json(document);
   } catch (error) {
@@ -179,6 +190,17 @@ router.get('/:id/download', async (req, res, next) => {
       ResponseContentDisposition: `attachment; filename="${safeName}"`,
     });
     const url = await getSignedUrl(s3, command, { expiresIn: 300 });
+
+    writeAuditLog({
+      organizationId: organizationId!,
+      actorId:        req.user!.id,
+      entity:         'Document',
+      entityId:       document.id,
+      action:         'DOWNLOAD',
+      ip:             req.ip,
+      userAgent:      req.headers['user-agent'],
+    }).catch(() => {});
+
     res.json({ url });
   } catch (error) {
     next(error);

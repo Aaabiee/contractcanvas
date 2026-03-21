@@ -58,6 +58,31 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
       S3_BUCKET:     ${S3_BUCKET:-contractcanvas}
 
+  pgbouncer:
+    image: edoburu/pgbouncer:1.21.0
+    container_name: contractcanvas-pgbouncer
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_USER:             ${POSTGRES_USER}
+      DB_PASSWORD:         ${POSTGRES_PASSWORD}
+      DB_HOST:             db
+      DB_NAME:             ${POSTGRES_DB}
+      POOL_MODE:           transaction
+      MAX_CLIENT_CONN:     200
+      DEFAULT_POOL_SIZE:   20
+      AUTH_TYPE:           md5
+      SERVER_TLS_SSLMODE:  disable
+    ports:
+      - "${PGBOUNCER_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: contractcanvas-redis
@@ -81,7 +106,7 @@ services:
     restart: unless-stopped
     profiles: ["full", "prod", "staging", "qa"]
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -90,7 +115,7 @@ services:
     environment:
       NODE_ENV:      ${NODE_ENV:-production}
       PORT:          3333
-      DATABASE_URL:  postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL:  postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}?pgbouncer=true&connection_limit=10
       JWT_SECRET:    ${JWT_SECRET}
       FRONTEND_URL:  ${FRONTEND_URL:-http://localhost}
       S3_ENDPOINT:   http://minio:9000

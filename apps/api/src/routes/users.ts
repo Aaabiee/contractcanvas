@@ -11,6 +11,11 @@ const UpdateMeSchema = z.object({
   avatarUrl: z.string().optional(),
 });
 
+const OnboardingStepValues = ['VERIFY_EMAIL', 'CUSTOMIZE_ORG', 'CREATE_MATTER', 'INVITE_MEMBER', 'UPLOAD_DOCUMENT', 'DONE'] as const;
+const OnboardingSchema = z.object({
+  step: z.enum(OnboardingStepValues),
+});
+
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.id;
@@ -28,6 +33,7 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
         role:            true,
         emailVerifiedAt: true,
         tosAcceptedAt:   true,
+        onboardingStep:  true,
         createdAt:       true,
       },
     });
@@ -67,6 +73,28 @@ router.patch('/me', async (req: Request, res: Response, next: NextFunction) => {
         tosAcceptedAt:   true,
         createdAt:       true,
       },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/me/onboarding', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+
+    const validation = OnboardingSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid input', details: validation.error.flatten() });
+    }
+
+    const updated = await prisma.user.update({
+      where:  { id: userId },
+      data:   { onboardingStep: validation.data.step },
+      select: { id: true, onboardingStep: true },
     });
 
     res.json(updated);

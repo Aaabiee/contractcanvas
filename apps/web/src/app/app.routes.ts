@@ -17,6 +17,7 @@ import { BillingComponent } from './pages/billing/billing.component';
 import { DocumentsComponent } from './pages/documents/documents.component';
 import { AdminComponent } from './pages/admin/admin.component';
 import { SearchComponent } from './pages/search/search.component';
+import { AnalyticsComponent } from './pages/analytics/analytics.component';
 
 export const routes: Routes = [
   { path: 'login',           component: LoginComponent },
@@ -41,6 +42,7 @@ export const routes: Routes = [
       { path: 'admin',                 component: AdminComponent },
       { path: 'settings/organization', component: OrganizationSettingsComponent },
       { path: 'search',                component: SearchComponent },
+      { path: 'analytics',            component: AnalyticsComponent },
       { path: '',                      redirectTo: 'dashboard', pathMatch: 'full' },
     ],
   },

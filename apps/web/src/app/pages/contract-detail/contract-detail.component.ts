@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, CurrencyPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ContractService, Contract, ContractVersion } from '../../services/contract.service';
 import { CommentsComponent } from '../../components/comments/comments.component';
@@ -14,7 +14,8 @@ export interface ContractWithVersions {
 @Component({
   selector: 'app-contract-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, CommentsComponent],
+  imports: [CommonModule, RouterLink, CommentsComponent, CurrencyPipe],
+  providers: [CurrencyPipe],
   templateUrl: './contract-detail.component.html',
   styleUrls: ['./contract-detail.component.css'],
 })
@@ -47,11 +48,12 @@ export class ContractDetailComponent implements OnInit {
     );
   }
 
+  private currencyPipe = inject(CurrencyPipe);
+
   formatCents(cents: number | null | undefined, currency: string | null | undefined): string {
     if (cents == null) return '—';
-    const amount = cents / 100;
     const curr = (currency ?? 'USD').toUpperCase();
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: curr }).format(amount);
+    return this.currencyPipe.transform(cents / 100, curr) ?? '—';
   }
 
   formatBytes(bytes: number): string {

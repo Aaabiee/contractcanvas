@@ -15,7 +15,16 @@ import {
   REFRESH_COOKIE,
   REFRESH_COOKIE_OPTS,
 } from '../lib/session.js';
-import { sendEmail } from '../services/email.service.js';
+import { sendEmail, type SendEmailOpts } from '../services/email.service.js';
+import { emailQueue } from '../queues/index.js';
+
+async function enqueueEmail(opts: SendEmailOpts): Promise<void> {
+  if (emailQueue) {
+    await emailQueue.add('send', opts);
+  } else {
+    await sendEmail(opts);
+  }
+}
 import type { Prisma } from '@prisma/client';
 
 export const router = Router();
@@ -168,7 +177,7 @@ const ResetPasswordSchema = z.object({
 
 async function sendVerificationEmail(email: string, firstName: string, rawToken: string) {
   const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/verify-email?token=${rawToken}`;
-  await sendEmail({
+  await enqueueEmail({
     to:       email,
     subject:  'Verify your ContractCanvas email',
     htmlBody: `<p>Hi ${firstName},</p><p>Click the link below to verify your email address. This link expires in 24 hours.</p><p><a href="${link}">${link}</a></p>`,
@@ -249,6 +258,17 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
         organization = orgToJoin!;
         await tx.organizationMember.create({
           data: { organizationId: orgToJoin!.id, userId: user.id, role: 'MEMBER' as OrgRoleType },
+        });
+      }
+
+      if (orgMode === 'create') {
+        await tx.subscription.create({
+          data: {
+            organizationId: organization.id,
+            tier:           'STARTER',
+            status:         'trialing',
+            trialEndsAt:    new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          },
         });
       }
 
@@ -515,7 +535,7 @@ router.post('/forgot-password', async (req: Request, res: Response, next: NextFu
       });
 
       const link = `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/reset-password?token=${rawToken}`;
-      await sendEmail({
+      await enqueueEmail({
         to:       user.email,
         subject:  'Reset your ContractCanvas password',
         htmlBody: `<p>Hi ${user.firstName},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${link}">${link}</a></p><p>If you did not request a password reset, you can ignore this email.</p>`,

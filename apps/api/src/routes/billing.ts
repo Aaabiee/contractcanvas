@@ -5,6 +5,7 @@ import { stripe as stripeConfig } from '../config.js';
 import { protect, requireEmailVerified } from '../middleware/auth.js';
 import prisma from '../prisma.js';
 import logger from '../lib/logger.js';
+import { sendEmail } from '../services/email.service.js';
 
 export const router = Router();
 
@@ -28,7 +29,7 @@ if (STRIPE_KEY && !STRIPE_KEY.includes('CONTRA_')) {
 
 const CreateIntentSchema = z.object({
   amount_cents: z.number().int().positive(),
-  currency:     z.string().default('usd'),
+  currency:     z.string().regex(/^[a-z]{3}$/, 'Currency must be a 3-letter ISO 4217 code').default('usd'),
   contractId:   z.string().cuid().optional(),
 });
 
@@ -362,6 +363,23 @@ router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async
             where: { stripeSubscriptionId: subId },
             data:  { status: 'past_due' },
           });
+
+          const sub = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: subId } });
+          if (sub) {
+            const owner = await prisma.organizationMember.findFirst({
+              where:   { organizationId: sub.organizationId, role: 'OWNER' },
+              include: { user: { select: { email: true, firstName: true } } },
+            });
+            if (owner?.user) {
+              const paymentLink = inv.hosted_invoice_url ?? '';
+              sendEmail({
+                to:       owner.user.email,
+                subject:  'Action required: Payment failed for your ContractCanvas subscription',
+                textBody: `Hi ${owner.user.firstName},\n\nYour recent payment failed. Please update your payment method within 7 days to avoid service interruption.\n\n${paymentLink ? `Pay now: ${paymentLink}` : 'Visit your billing dashboard to update your payment method.'}\n\nContractCanvas`,
+                htmlBody: `<p>Hi ${owner.user.firstName},</p><p>Your recent payment failed. Please update your payment method within 7 days to avoid service interruption.</p>${paymentLink ? `<p><a href="${paymentLink}">Pay now</a></p>` : '<p>Visit your billing dashboard to update your payment method.</p>'}<p>ContractCanvas</p>`,
+              }).catch(e => logger.error({ err: e }, 'Failed to send payment_failed email'));
+            }
+          }
         }
         break;
       }

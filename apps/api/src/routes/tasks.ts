@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma.js';
+import { webhookQueue } from '../queues/index.js';
 
 const router = Router();
 
@@ -153,6 +154,14 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
         matter:   { select: { id: true, title: true } },
       },
     });
+
+    if (v.data.completedAt && !existing.completedAt && webhookQueue) {
+      webhookQueue.add('task.completed', {
+        organizationId,
+        event:   'task.completed',
+        payload: { taskId: updated.id, title: updated.title, matterId: updated.matterId },
+      }).catch(() => {});
+    }
 
     res.json(updated);
   } catch (error) {
