@@ -56,3 +56,13 @@
 .version-mime { font-size: 0.8em; color: #999; font-style: italic; }
 .error-message { color: red; }
 .empty-list { color: #777; }
+.action-bar { display: flex; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+.signatures-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; }
+.envelope-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; flex-wrap: wrap; }
+.sig-provider { font-size: 13px; color: #666; text-transform: capitalize; }
+.sig-date { font-size: 13px; color: #999; }
+.sig-recipient { font-size: 12px; color: #555; }
+.sig-status { font-size: 11px; font-weight: 600; }
+.sig-completed { background: #e8f5e9 !important; color: #2e7d32 !important; }
+.sig-sent { background: #e3f2fd !important; color: #1565c0 !important; }
+.sig-voided { background: #fce4ec !important; color: #880e4f !important; }

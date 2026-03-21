@@ -19,6 +19,7 @@ import { OrganizationService } from '../../services/organization.service';
 import { MatterService }        from '../../services/matter.service';
 import { ContractService }      from '../../services/contract.service';
 import { AuthService }          from '../../services/auth.service';
+import { AuditLogService }     from '../../services/audit-log.service';
 
 const mockCurrentUser = signal<any>({ id: 'u1', email: 'alice@acme.com', role: 'ADMIN' });
 
@@ -31,9 +32,9 @@ const mockOrgs = [
 ];
 
 const mockMembers = [
-  { id: 'mem1', organizationId: 'org1', userId: 'u1', role: 'OWNER', createdAt: '2024-01-01T00:00:00Z',
+  { id: 'mem1', organizationId: 'org1', userId: 'u1', role: 'OWNER' as const, createdAt: '2024-01-01T00:00:00Z',
     user: { id: 'u1', firstName: 'Alice', lastName: 'Smith', email: 'alice@acme.com' } },
-  { id: 'mem2', organizationId: 'org1', userId: 'u2', role: 'MEMBER', createdAt: '2024-02-01T00:00:00Z',
+  { id: 'mem2', organizationId: 'org1', userId: 'u2', role: 'MEMBER' as const, createdAt: '2024-02-01T00:00:00Z',
     user: { id: 'u2', firstName: 'Bob',   lastName: 'Jones', email: 'bob@acme.com'   } },
 ];
 
@@ -56,6 +57,7 @@ describe('AdminComponent (integration — real Org/Matter/ContractService)', () 
         MatterService,
         ContractService,
         { provide: AuthService, useClass: MockAuthService },
+        { provide: AuditLogService, useValue: { getLogs: jest.fn().mockReturnValue(of({ data: [], total: 0, limit: 25, offset: 0 })), exportCsv: jest.fn() } },
       ],
     })
       .overrideComponent(AdminComponent, {

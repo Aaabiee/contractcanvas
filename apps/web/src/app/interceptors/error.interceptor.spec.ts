@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';
+import { MatDialog } from '@angular/material/dialog';
 import { errorInterceptor } from './error.interceptor';
 import { AuthService } from '../services/auth.service';
 
@@ -21,6 +22,7 @@ describe('errorInterceptor', () => {
         provideHttpClientTesting(),
         provideRouter([]),
         { provide: AuthService, useValue: authService },
+        { provide: MatDialog, useValue: { open: jest.fn() } },
       ],
     });
 
@@ -87,5 +89,14 @@ describe('errorInterceptor', () => {
     req.flush(null, { status: 0, statusText: 'Unknown Error' });
     expect(authService.logout).not.toHaveBeenCalled();
     expect(thrownError).toBeTruthy();
+  });
+
+  it('opens upgrade dialog on 402 and re-throws error', () => {
+    let thrownError: HttpErrorResponse | undefined;
+    http.get('/api/data').subscribe({ error: err => (thrownError = err) });
+    const req = httpMock.expectOne('/api/data');
+    req.flush({ error: 'LIMIT_EXCEEDED', limit: 5, current: 5 }, { status: 402, statusText: 'Payment Required' });
+    expect(thrownError!.status).toBe(402);
+    expect(authService.logout).not.toHaveBeenCalled();
   });
 });

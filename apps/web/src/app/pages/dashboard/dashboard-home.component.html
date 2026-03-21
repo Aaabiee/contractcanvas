@@ -33,20 +33,33 @@
 
 <!-- Stats cards -->
 <section class="cards">
-  <mat-card
-    *ngFor="let s of stats(); trackBy: statTrackBy"
-    class="stat-card"
-    [class.clickable]="s.value >= 1"
-    (click)="goStatCard(s)"
-  >
-    <div class="stat">
-      <mat-icon class="stat-icon" [ngClass]="s.color">{{ s.icon }}</mat-icon>
-      <div class="stat-meta">
-        <div class="value">{{ s.value }}</div>
-        <div class="label">{{ s.label }}</div>
+  <ng-container *ngIf="!loading(); else statSkeletons">
+    <mat-card
+      *ngFor="let s of stats(); trackBy: statTrackBy"
+      class="stat-card"
+      [class.clickable]="s.value >= 1"
+      (click)="goStatCard(s)"
+    >
+      <div class="stat">
+        <mat-icon class="stat-icon" [ngClass]="s.color">{{ s.icon }}</mat-icon>
+        <div class="stat-meta">
+          <div class="value">{{ s.value }}</div>
+          <div class="label">{{ s.label }}</div>
+        </div>
       </div>
-    </div>
-  </mat-card>
+    </mat-card>
+  </ng-container>
+  <ng-template #statSkeletons>
+    <mat-card *ngFor="let i of [1,2,3,4]" class="stat-card skeleton-card">
+      <div class="stat">
+        <div class="skeleton-circle"></div>
+        <div class="stat-meta">
+          <div class="skeleton-line wide"></div>
+          <div class="skeleton-line narrow"></div>
+        </div>
+      </div>
+    </mat-card>
+  </ng-template>
 </section>
 
 <div class="grid">

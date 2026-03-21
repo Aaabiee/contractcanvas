@@ -86,6 +86,7 @@ export class DashboardComponent {
     };
     effect(() => {
       const dark = this.themeDark();
+      document.documentElement.classList.toggle('theme-dark', dark);
       document.body.classList.toggle('theme-dark', dark);
       localStorage.setItem('cc.theme', dark ? 'dark' : 'light');
     });

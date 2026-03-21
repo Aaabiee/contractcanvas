@@ -8,12 +8,36 @@
       <h2>{{ data.contract.title }}</h2>
       <span class="status-badge status-{{ data.contract.status.toLowerCase() }}">{{ data.contract.status }}</span>
 
+      <div class="action-bar">
+        <button mat-raised-button color="primary"
+          *ngIf="data.contract.status === 'NEGOTIATION' || data.contract.status === 'DRAFT'"
+          [disabled]="sendingSig()"
+          (click)="sendForSignature(data.contract.id)">
+          <mat-icon>draw</mat-icon>
+          {{ sendingSig() ? 'Sending…' : 'Send for Signature' }}
+        </button>
+        <button mat-stroked-button [disabled]="generatingPdf()" (click)="generatePdf(data.contract.id)">
+          <mat-icon>picture_as_pdf</mat-icon>
+          {{ generatingPdf() ? 'Generating…' : 'Generate PDF' }}
+        </button>
+      </div>
+
       <dl class="contract-meta">
         <dt>Value</dt>
         <dd>{{ formatCents(data.contract.valueCents, data.contract.currency) }}</dd>
         <dt>Currency</dt>
         <dd>{{ data.contract.currency ?? '—' }}</dd>
       </dl>
+
+      <section *ngIf="envelopes().length > 0" class="signatures-section">
+        <h3>Signatures</h3>
+        <div *ngFor="let env of envelopes()" class="envelope-row">
+          <mat-chip [class]="'sig-status sig-' + env.status.toLowerCase()">{{ env.status }}</mat-chip>
+          <span class="sig-provider">{{ env.provider }}</span>
+          <span class="sig-date">{{ env.createdAt | date:'short' }}</span>
+          <span *ngFor="let r of env.recipients" class="sig-recipient">{{ r.name }} ({{ r.email }})</span>
+        </div>
+      </section>
 
       <section class="versions-section">
         <h3>Version History</h3>

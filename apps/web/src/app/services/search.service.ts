@@ -11,11 +11,12 @@ export interface SearchMatter {
 }
 
 export interface SearchContract {
-  id:        string;
-  title:     string;
-  status:    string;
-  matterId:  string;
-  createdAt: string;
+  id:           string;
+  title:        string;
+  description?: string | null;
+  status:       string;
+  matterId:     string;
+  createdAt:    string;
 }
 
 export interface SearchDocument {

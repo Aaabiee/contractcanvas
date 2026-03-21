@@ -72,7 +72,7 @@ import { AnalyticsService, type AnalyticsOverview, type ContractTrends } from '.
             </mat-card-header>
             <mat-divider/>
             <mat-card-content class="chart-wrap">
-              <canvas baseChart [data]="matterDoughnutData()" type="doughnut" [options]="doughnutOpts"/>
+              <canvas baseChart [data]="matterDoughnutData()" type="doughnut" [options]="doughnutOpts"></canvas>
             </mat-card-content>
           </mat-card>
 
@@ -80,7 +80,7 @@ import { AnalyticsService, type AnalyticsOverview, type ContractTrends } from '.
           <mat-card class="chart-card">
             <mat-card-header>
               <mat-card-title>Contract Trends</mat-card-title>
-              <span class="spacer"/>
+              <span class="spacer"></span>
               <mat-button-toggle-group [(ngModel)]="trendPeriod" (ngModelChange)="loadTrends($event)">
                 <mat-button-toggle value="30d">30d</mat-button-toggle>
                 <mat-button-toggle value="90d">90d</mat-button-toggle>
@@ -89,7 +89,7 @@ import { AnalyticsService, type AnalyticsOverview, type ContractTrends } from '.
             </mat-card-header>
             <mat-divider/>
             <mat-card-content class="chart-wrap">
-              <canvas baseChart [data]="trendLineData()" type="line" [options]="lineOpts"/>
+              <canvas baseChart [data]="trendLineData()" type="line" [options]="lineOpts"></canvas>
             </mat-card-content>
           </mat-card>
         </div>

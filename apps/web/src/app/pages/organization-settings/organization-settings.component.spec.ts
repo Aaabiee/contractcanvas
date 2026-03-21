@@ -2,6 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { OrganizationSettingsComponent } from './organization-settings.component';
 import { OrganizationService } from '../../services/organization.service';
 import { AuthService } from '../../services/auth.service';
+import { WebhookService } from '../../services/webhook.service';
+import { ApiKeyService } from '../../services/api-key.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -39,6 +41,8 @@ describe('OrganizationSettingsComponent', () => {
         provideHttpClient(), provideHttpClientTesting(), provideAnimations(),
         { provide: OrganizationService, useValue: orgServiceMock },
         { provide: AuthService,         useValue: authServiceMock },
+        { provide: WebhookService,     useValue: { list: jest.fn().mockReturnValue(of({ data: [] })), create: jest.fn(), update: jest.fn(), remove: jest.fn() } },
+        { provide: ApiKeyService,      useValue: { list: jest.fn().mockReturnValue(of({ data: [] })), create: jest.fn(), revoke: jest.fn() } },
       ],
     })
       .overrideComponent(OrganizationSettingsComponent, {
@@ -81,7 +85,7 @@ describe('OrganizationSettingsComponent', () => {
     component.inviteRole.setValue('MEMBER');
     component.inviteMember();
     expect(orgService.addMember).toHaveBeenCalledWith('org-1', { email: 'new@acme.com', role: 'MEMBER' });
-    expect(snackMock.open).toHaveBeenCalledWith('Member invited successfully.', 'OK', expect.any(Object));
+    expect(snackMock.open).toHaveBeenCalledWith('Member invited.', 'OK', expect.any(Object));
     expect(component.inviting()).toBe(false);
   });
 
@@ -116,7 +120,7 @@ describe('OrganizationSettingsComponent', () => {
   it('should show snackbar on removeMember error', () => {
     orgService.removeMember.mockReturnValue(throwError(() => new Error('fail')));
     component.removeMember(mockMembers[0]);
-    expect(snackMock.open).toHaveBeenCalledWith('Failed to remove member.', 'Dismiss', expect.any(Object));
+    expect(snackMock.open).toHaveBeenCalledWith('Failed to remove.', 'Dismiss', expect.any(Object));
   });
 
   describe('roleColor()', () => {
@@ -128,5 +132,29 @@ describe('OrganizationSettingsComponent', () => {
   it('currentUserId returns empty string when currentUser returns null', () => {
     (component as any).authService = { currentUser: () => null };
     expect(component.currentUserId()).toBe('');
+  });
+
+  it('onTabChange(1) triggers webhook loading', () => {
+    const whService = TestBed.inject(WebhookService) as jest.Mocked<WebhookService>;
+    component.onTabChange(1);
+    expect(whService.list).toHaveBeenCalledWith('org-1');
+  });
+
+  it('onTabChange(2) triggers api key loading', () => {
+    const akService = TestBed.inject(ApiKeyService) as jest.Mocked<ApiKeyService>;
+    component.onTabChange(2);
+    expect(akService.list).toHaveBeenCalledWith('org-1');
+  });
+
+  it('saveRetention shows snackbar with days', () => {
+    component.retentionDays.setValue(365);
+    component.saveRetention();
+    expect(snackMock.open).toHaveBeenCalledWith('Retention set to 365 days.', 'OK', expect.any(Object));
+  });
+
+  it('saveRetention does nothing when invalid', () => {
+    component.retentionDays.setValue(0);
+    component.saveRetention();
+    expect(snackMock.open).not.toHaveBeenCalled();
   });
 });

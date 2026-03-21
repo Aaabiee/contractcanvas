@@ -79,6 +79,26 @@ import { NotificationService } from '../../services/notification.service';
       color: #856404;
     }
     .verify-banner span { flex: 1; }
+
+    @keyframes shimmer {
+      0% { background-position: -200px 0; }
+      100% { background-position: 200px 0; }
+    }
+    .skeleton-card { pointer-events: none; }
+    .skeleton-circle {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    .skeleton-line {
+      height: 14px; border-radius: 4px;
+      background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    .skeleton-line.wide { width: 60px; margin-bottom: 6px; }
+    .skeleton-line.narrow { width: 80px; }
   `],
 })
 export class DashboardHomeComponent implements OnInit, AfterViewInit {

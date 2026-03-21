@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { signal } from '@angular/core';
@@ -151,5 +151,46 @@ describe('ContractDetailComponent', () => {
     expect(component.formatBytes(512)).toBe('512 B');
     expect(component.formatBytes(2048)).toBe('2.0 KB');
     expect(component.formatBytes(1048576)).toBe('1.0 MB');
+  });
+
+  it('loadEnvelopes fetches signatures for a contract', async () => {
+    await setup();
+    fixture.detectChanges();
+    const httpMock = TestBed.inject(HttpTestingController);
+    component.loadEnvelopes('c1');
+    const req = httpMock.expectOne('/api/signatures?contractId=c1');
+    req.flush([{ id: 'env-1', provider: 'docusign', status: 'SENT', recipients: [], createdAt: '2024-01-01' }]);
+    expect(component.envelopes()).toHaveLength(1);
+    httpMock.verify();
+  });
+
+  it('sendForSignature posts and updates envelopes list', async () => {
+    await setup();
+    fixture.detectChanges();
+    const httpMock = TestBed.inject(HttpTestingController);
+    component.sendForSignature('c1');
+    expect(component.sendingSig()).toBe(true);
+    const req = httpMock.expectOne('/api/signatures');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body.contractId).toBe('c1');
+    req.flush({ id: 'env-new', provider: 'docusign', status: 'SENT', recipients: [], createdAt: '2024-01-01' });
+    expect(component.sendingSig()).toBe(false);
+    expect(component.envelopes()).toHaveLength(1);
+    httpMock.verify();
+  });
+
+  it('generatePdf posts and resets signal', async () => {
+    await setup();
+    fixture.detectChanges();
+    const httpMock = TestBed.inject(HttpTestingController);
+    (globalThis as any).URL.createObjectURL = jest.fn().mockReturnValue('blob:test');
+    (globalThis as any).URL.revokeObjectURL = jest.fn();
+    component.generatePdf('c1');
+    expect(component.generatingPdf()).toBe(true);
+    const req = httpMock.expectOne('/api/contracts/c1/generate-pdf');
+    expect(req.request.method).toBe('POST');
+    req.flush(new Blob(['pdf-content']));
+    expect(component.generatingPdf()).toBe(false);
+    httpMock.verify();
   });
 });

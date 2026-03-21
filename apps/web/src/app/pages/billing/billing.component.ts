@@ -10,6 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
+import { HttpClient } from '@angular/common/http';
 import { BillingService, InvoiceIntent } from '../../services/billing.service';
 
 @Component({
@@ -63,6 +64,20 @@ import { BillingService, InvoiceIntent } from '../../services/billing.service';
         </mat-card-content>
       </mat-card>
 
+      <!-- Manage Subscription -->
+      <mat-card class="billing-card">
+        <mat-card-header>
+          <mat-card-title>Subscription</mat-card-title>
+          <mat-card-subtitle>Manage your plan, payment methods, and invoices via Stripe</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <button mat-raised-button color="accent" [disabled]="openingPortal()" (click)="openPortal()">
+            <mat-icon>manage_accounts</mat-icon>
+            {{ openingPortal() ? 'Opening…' : 'Manage Subscription' }}
+          </button>
+        </mat-card-content>
+      </mat-card>
+
       <!-- Payment Intent Result -->
       <mat-card *ngIf="invoiceResult()" class="billing-card result-card">
         <mat-card-header>
@@ -107,9 +122,11 @@ import { BillingService, InvoiceIntent } from '../../services/billing.service';
 })
 export class BillingComponent {
   private billingService = inject(BillingService);
+  private http           = inject(HttpClient);
   private snack          = inject(MatSnackBar);
 
   submitting    = signal(false);
+  openingPortal = signal(false);
   invoiceResult = signal<InvoiceIntent | null>(null);
 
   invoiceForm = new FormGroup({
@@ -135,6 +152,20 @@ export class BillingComponent {
       error: err => {
         this.snack.open(err?.error?.message ?? 'Failed to create invoice.', 'Dismiss', { duration: 4000 });
         this.submitting.set(false);
+      },
+    });
+  }
+
+  openPortal(): void {
+    this.openingPortal.set(true);
+    this.http.post<{ url: string }>('/api/billing/portal-session', {}).subscribe({
+      next: res => {
+        this.openingPortal.set(false);
+        window.location.href = res.url;
+      },
+      error: err => {
+        this.openingPortal.set(false);
+        this.snack.open(err?.error?.message ?? 'Failed to open portal.', 'Dismiss', { duration: 3000 });
       },
     });
   }

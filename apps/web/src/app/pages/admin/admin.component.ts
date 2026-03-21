@@ -18,11 +18,14 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 
 import { OrganizationService, OrgMember } from '../../services/organization.service';
 import { MatterService } from '../../services/matter.service';
 import { ContractService } from '../../services/contract.service';
 import { AuthService } from '../../services/auth.service';
+import { AuditLogService, AuditLogEntry } from '../../services/audit-log.service';
 
 @Component({
   selector: 'app-admin',
@@ -33,6 +36,7 @@ import { AuthService } from '../../services/auth.service';
     MatCardModule, MatButtonModule, MatIconModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTableModule, MatChipsModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatDividerModule, MatTooltipModule,
+    MatTabsModule, MatPaginatorModule,
   ],
   template: `
     <div class="page-shell">
@@ -184,6 +188,70 @@ import { AuthService } from '../../services/auth.service';
           </mat-card-content>
         </mat-card>
 
+      <!-- Audit Log Tab -->
+        <mat-divider></mat-divider>
+        <mat-card class="section-card">
+          <mat-card-header>
+            <mat-card-title><mat-icon>history</mat-icon> Audit Log</mat-card-title>
+            <mat-card-subtitle>Track all actions performed in your organization</mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="audit-toolbar">
+              <mat-form-field appearance="outline" class="audit-filter">
+                <mat-label>Entity</mat-label>
+                <mat-select [formControl]="auditEntityFilter" (selectionChange)="loadAuditLogs()">
+                  <mat-option value="">All</mat-option>
+                  <mat-option value="Matter">Matter</mat-option>
+                  <mat-option value="Contract">Contract</mat-option>
+                  <mat-option value="Document">Document</mat-option>
+                  <mat-option value="User">User</mat-option>
+                  <mat-option value="SignatureEnvelope">Signature</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <button mat-stroked-button (click)="exportAuditCsv()" matTooltip="Download CSV">
+                <mat-icon>download</mat-icon> Export
+              </button>
+            </div>
+
+            <div *ngIf="auditLoading()" class="center-spinner"><mat-spinner diameter="32"></mat-spinner></div>
+
+            <table *ngIf="!auditLoading()" mat-table [dataSource]="auditLogs()" class="members-table">
+              <ng-container matColumnDef="createdAt">
+                <th mat-header-cell *matHeaderCellDef>Time</th>
+                <td mat-cell *matCellDef="let l" class="date-cell">{{ l.createdAt | date:'short' }}</td>
+              </ng-container>
+              <ng-container matColumnDef="action">
+                <th mat-header-cell *matHeaderCellDef>Action</th>
+                <td mat-cell *matCellDef="let l">
+                  <mat-chip disableRipple class="action-chip">{{ l.action }}</mat-chip>
+                </td>
+              </ng-container>
+              <ng-container matColumnDef="entity">
+                <th mat-header-cell *matHeaderCellDef>Entity</th>
+                <td mat-cell *matCellDef="let l">{{ l.entity }}</td>
+              </ng-container>
+              <ng-container matColumnDef="entityId">
+                <th mat-header-cell *matHeaderCellDef>ID</th>
+                <td mat-cell *matCellDef="let l" class="mono-cell">{{ l.entityId | slice:0:12 }}…</td>
+              </ng-container>
+              <ng-container matColumnDef="ip">
+                <th mat-header-cell *matHeaderCellDef>IP</th>
+                <td mat-cell *matCellDef="let l" class="mono-cell">{{ l.ip ?? '—' }}</td>
+              </ng-container>
+              <tr mat-header-row *matHeaderRowDef="auditCols"></tr>
+              <tr mat-row *matRowDef="let row; columns: auditCols;"></tr>
+            </table>
+
+            <mat-paginator *ngIf="auditTotal() > 0"
+              [length]="auditTotal()"
+              [pageSize]="auditPageSize"
+              [pageSizeOptions]="[25, 50, 100]"
+              (page)="onAuditPage($event)"
+              showFirstLastButtons>
+            </mat-paginator>
+          </mat-card-content>
+        </mat-card>
+
       </ng-container>
     </div>
   `,
@@ -238,24 +306,37 @@ import { AuthService } from '../../services/auth.service';
       position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
       overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
     }
+
+    .audit-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+    .audit-filter  { width: 160px; }
+    .action-chip   { font-size: 11px; font-weight: 600; }
+    .mono-cell     { font-family: monospace; font-size: 12px; color: #666; }
   `],
 })
 export class AdminComponent implements OnInit {
-  private orgService    = inject(OrganizationService);
-  private matterService = inject(MatterService);
+  private orgService      = inject(OrganizationService);
+  private matterService   = inject(MatterService);
   private contractService = inject(ContractService);
-  private authService   = inject(AuthService);
-  private snack         = inject(MatSnackBar);
+  private authService     = inject(AuthService);
+  private auditService    = inject(AuditLogService);
+  private snack           = inject(MatSnackBar);
 
-  loading       = signal(true);
-  inviting      = signal(false);
-  members       = signal<OrgMember[]>([]);
-  openMatters   = signal(0);
+  loading        = signal(true);
+  inviting       = signal(false);
+  members        = signal<OrgMember[]>([]);
+  openMatters    = signal(0);
   totalContracts = signal(0);
-  orgName       = signal('—');
-  orgId         = signal('');
+  orgName        = signal('—');
+  orgId          = signal('');
 
   memberCols = ['name', 'role', 'since', 'actions'];
+
+  auditLogs      = signal<AuditLogEntry[]>([]);
+  auditTotal     = signal(0);
+  auditLoading   = signal(false);
+  auditPageSize  = 25;
+  auditCols      = ['createdAt', 'action', 'entity', 'entityId', 'ip'];
+  auditEntityFilter = new FormControl('');
 
   currentUserId = computed(() => this.authService.currentUser()?.id ?? '');
 
@@ -284,6 +365,7 @@ export class AdminComponent implements OnInit {
         this.openMatters.set((matters as any).total ?? 0);
         this.totalContracts.set((contracts as any).total ?? 0);
         this.loading.set(false);
+        this.loadAuditLogs();
       });
     });
   }
@@ -305,6 +387,37 @@ export class AdminComponent implements OnInit {
         this.snack.open(err?.error?.message ?? 'Failed to invite member.', 'Dismiss', { duration: 4000 });
         this.inviting.set(false);
       },
+    });
+  }
+
+  loadAuditLogs(offset = 0): void {
+    if (!this.orgId()) return;
+    this.auditLoading.set(true);
+    const entity = this.auditEntityFilter.value || undefined;
+    this.auditService.getLogs(this.orgId(), { entity, limit: this.auditPageSize, offset }).subscribe({
+      next: res => {
+        this.auditLogs.set(res.data);
+        this.auditTotal.set(res.total);
+        this.auditLoading.set(false);
+      },
+      error: () => this.auditLoading.set(false),
+    });
+  }
+
+  onAuditPage(event: PageEvent): void {
+    this.auditPageSize = event.pageSize;
+    this.loadAuditLogs(event.pageIndex * event.pageSize);
+  }
+
+  exportAuditCsv(): void {
+    if (!this.orgId()) return;
+    this.auditService.exportCsv(this.orgId()).subscribe(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'audit-logs.csv';
+      a.click();
+      URL.revokeObjectURL(url);
     });
   }
 

@@ -9,6 +9,7 @@ import { OrganizationService, OrgMember } from '../../services/organization.serv
 import { MatterService } from '../../services/matter.service';
 import { ContractService } from '../../services/contract.service';
 import { AuthService } from '../../services/auth.service';
+import { AuditLogService } from '../../services/audit-log.service';
 
 const mockOrgs = [{ id: 'org1', name: 'ACME Legal', slug: 'acme-legal', createdAt: '2024-01-01T00:00:00Z' }];
 
@@ -40,6 +41,11 @@ class MockAuthService {
   currentUser = mockCurrentUser;
 }
 
+class MockAuditLogService {
+  getLogs   = jest.fn(() => of({ data: [], total: 0, limit: 25, offset: 0 }));
+  exportCsv = jest.fn(() => of(new Blob([''])));
+}
+
 describe('AdminComponent', () => {
   let component: AdminComponent;
   let fixture: ComponentFixture<AdminComponent>;
@@ -57,6 +63,7 @@ describe('AdminComponent', () => {
         { provide: MatterService,       useClass: MockMatterService   },
         { provide: ContractService,     useClass: MockContractService },
         { provide: AuthService,         useClass: MockAuthService     },
+        { provide: AuditLogService,    useClass: MockAuditLogService },
       ],
     })
       .overrideComponent(AdminComponent, {

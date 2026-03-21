@@ -3,7 +3,7 @@ import { BillingComponent } from './billing.component';
 import { BillingService } from '../../services/billing.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
@@ -89,5 +89,27 @@ describe('BillingComponent', () => {
     component.copySecret();
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('pi_test_secret');
     expect(snackMock.open).toHaveBeenCalledWith('Copied to clipboard.', 'OK', expect.any(Object));
+  });
+
+  it('openPortal posts to portal-session and sets openingPortal signal', () => {
+    const httpMock = TestBed.inject(HttpTestingController);
+    const locationSpy = jest.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, href: '' } as any);
+    component.openPortal();
+    expect(component.openingPortal()).toBe(true);
+    const req = httpMock.expectOne('/api/billing/portal-session');
+    expect(req.request.method).toBe('POST');
+    req.flush({ url: 'https://billing.stripe.com/session/123' });
+    expect(component.openingPortal()).toBe(false);
+    locationSpy.mockRestore();
+    httpMock.verify();
+  });
+
+  it('openPortal shows error on failure', () => {
+    const httpMock = TestBed.inject(HttpTestingController);
+    component.openPortal();
+    httpMock.expectOne('/api/billing/portal-session').flush({ message: 'No customer' }, { status: 400, statusText: 'Bad' });
+    expect(component.openingPortal()).toBe(false);
+    expect(snackMock.open).toHaveBeenCalled();
+    httpMock.verify();
   });
 });

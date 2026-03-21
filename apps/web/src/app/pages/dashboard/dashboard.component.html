@@ -63,6 +63,9 @@
         </button>
       </form>
       <span class="flex-1"></span>
+      <button mat-icon-button (click)="toggleTheme(!themeDark())" [matTooltip]="themeDark() ? 'Switch to light mode' : 'Switch to dark mode'" aria-label="Toggle theme">
+        <mat-icon>{{ themeDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
+      </button>
       <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="Open user menu" matTooltip="Account">
         <mat-icon>account_circle</mat-icon>
       </button>

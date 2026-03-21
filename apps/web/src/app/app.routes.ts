@@ -18,6 +18,7 @@ import { DocumentsComponent } from './pages/documents/documents.component';
 import { AdminComponent } from './pages/admin/admin.component';
 import { SearchComponent } from './pages/search/search.component';
 import { AnalyticsComponent } from './pages/analytics/analytics.component';
+import { OnboardingComponent } from './pages/onboarding/onboarding.component';
 
 export const routes: Routes = [
   { path: 'login',           component: LoginComponent },
@@ -25,6 +26,7 @@ export const routes: Routes = [
   { path: 'verify-email',    component: VerifyEmailComponent },
   { path: 'forgot-password', component: ForgotPasswordComponent },
   { path: 'reset-password',  component: ResetPasswordComponent },
+  { path: 'onboarding',      component: OnboardingComponent, canActivate: [authGuard] },
 
   {
     path: '',
