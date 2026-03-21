@@ -10,7 +10,7 @@
  *         misconfiguration that exposes production data
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   validateProductionConfig,
   DEFAULT_JWT_SECRET,
@@ -212,3 +212,4 @@ describe('validateProductionConfig — combined error paths', () => {
     ).not.toThrow();
   });
 });
+

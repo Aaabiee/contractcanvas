@@ -201,3 +201,50 @@ describe('DELETE /api/reminders/:id', () => {
     expect(res.status).toBe(204);
   });
 });
+
+// ── error propagation via next(err) ──────────────────────────────────────────
+
+describe('error propagation via next(err)', () => {
+  function buildWithErrHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', organizationId: orgId };
+      next();
+    });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      res.status(500).json({ error: err.message });
+    });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.$transaction.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler()).get('/');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'clxxxxxxxxxxxxxxxxxxxx' });
+    mockPrisma.reminder.create.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler())
+      .post('/')
+      .send({ contractId: 'clxxxxxxxxxxxxxxxxxxxx', type: 'DEADLINE', dueAt: '2026-06-01T00:00:00Z' });
+    expect(res.status).toBe(500);
+  });
+
+  it('PATCH /:id propagates DB errors', async () => {
+    mockPrisma.reminder.findFirst.mockResolvedValue({ id: 'r1', organizationId: 'org-1' });
+    mockPrisma.reminder.update.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler()).patch('/r1').send({ type: 'RENEWAL' });
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.reminder.findFirst.mockResolvedValue({ id: 'r1', organizationId: 'org-1' });
+    mockPrisma.reminder.delete.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler()).delete('/r1');
+    expect(res.status).toBe(500);
+  });
+});

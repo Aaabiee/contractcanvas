@@ -476,3 +476,136 @@ describe('POST /api/organizations/:orgId/transfer-ownership', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Additional coverage: next(error) branches and role/admin limits   */
+/* ------------------------------------------------------------------ */
+
+describe('POST /api/organizations — next(error) for non-Prisma errors', () => {
+  it('propagates generic errors via next()', async () => {
+    mockPrisma.$transaction.mockRejectedValue(new Error('Generic DB error'));
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    const res = await request(app).post('/').send({ name: 'Acme', slug: 'acme' });
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /api/organizations/:orgId/members — ADMIN role restrictions', () => {
+  it('returns 403 when non-owner tries to add member as ADMIN', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'ADMIN' });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/org-1/members')
+      .send({ userId: 'clxxxxxxxxxxxxxxxxxxxx', role: 'ADMIN' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/owner/i);
+  });
+
+  it('returns 400 when max 2 admins already exist', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.organizationMember.count.mockResolvedValue(2);
+    const app = buildApp();
+    const res = await request(app)
+      .post('/org-1/members')
+      .send({ userId: 'clxxxxxxxxxxxxxxxxxxxx', role: 'ADMIN' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/maximum/i);
+  });
+});
+
+describe('POST /api/organizations/:orgId/members — next(error) for generic errors', () => {
+  it('propagates generic errors via next()', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-2' });
+    mockPrisma.organizationMember.create.mockRejectedValue(new Error('Generic DB error'));
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    const res = await request(app)
+      .post('/org-1/members')
+      .send({ userId: 'clxxxxxxxxxxxxxxxxxxxx', role: 'MEMBER' });
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('PATCH /api/organizations/:orgId/members/:memberId — ADMIN role restrictions', () => {
+  it('returns 403 when non-owner tries to update member to ADMIN', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'ADMIN' });
+    const app = buildApp();
+    const res = await request(app).patch('/org-1/members/m1').send({ role: 'ADMIN' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/owner/i);
+  });
+
+  it('returns 400 when trying to update member to OWNER', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    const app = buildApp();
+    const res = await request(app).patch('/org-1/members/m1').send({ role: 'OWNER' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/transfer-ownership/i);
+  });
+
+  it('returns 400 when max 2 admins already exist on update', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.organizationMember.count.mockResolvedValue(2);
+    const app = buildApp();
+    const res = await request(app).patch('/org-1/members/m1').send({ role: 'ADMIN' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/maximum/i);
+  });
+});
+
+describe('PATCH /api/organizations/:orgId/members/:memberId — next(error) for generic errors', () => {
+  it('propagates generic errors via next()', async () => {
+    mockPrisma.organizationMember.findUnique.mockResolvedValue({ role: 'OWNER' });
+    mockPrisma.organizationMember.count.mockResolvedValue(0);
+    mockPrisma.organizationMember.update.mockRejectedValue(new Error('Generic DB error'));
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    const res = await request(app).patch('/org-1/members/m1').send({ role: 'ADMIN' });
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('DELETE /api/organizations/:orgId/members/:memberId — next(error) for generic errors', () => {
+  it('propagates generic errors via next()', async () => {
+    mockPrisma.organizationMember.findUnique
+      .mockResolvedValueOnce({ id: 'm1', organizationId: 'org-1', userId: 'user-1', role: 'MEMBER' })
+      .mockResolvedValueOnce({ role: 'ADMIN' });
+    mockPrisma.organizationMember.delete.mockRejectedValue(new Error('Generic DB error'));
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    const res = await request(app).delete('/org-1/members/m1');
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /api/organizations/:orgId/transfer-ownership — next(error) for generic errors', () => {
+  it('propagates generic errors via next()', async () => {
+    mockPrisma.organizationMember.findUnique
+      .mockResolvedValueOnce({ id: 'm1', role: 'OWNER' })
+      .mockResolvedValueOnce({ id: 'm2' });
+    mockPrisma.$transaction.mockRejectedValue(new Error('Transaction failed'));
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => { res.status(500).json({ error: err.message }); });
+    const res = await request(app)
+      .post('/org-1/transfer-ownership')
+      .send({ newOwnerUserId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(500);
+  });
+});

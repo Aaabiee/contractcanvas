@@ -14,16 +14,18 @@ vi.mock('../../config.js', () => ({
   DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
 }));
 
+const mockProtect = vi.hoisted(() => vi.fn((req: any, _res: any, next: any) => {
+  req.user = {
+    id: 'user-1',
+    email: 'test@example.com',
+    roles: ['LAWYER'],
+    organizationId: 'org-1',
+  };
+  next();
+}));
+
 vi.mock('../../middleware/auth.js', () => ({
-  protect: (req: any, _res: any, next: any) => {
-    req.user = {
-      id: 'user-1',
-      email: 'test@example.com',
-      roles: ['LAWYER'],
-      organizationId: 'org-1',
-    };
-    next();
-  },
+  protect: (...args: any[]) => mockProtect(...args),
   requireEmailVerified: (_req: any, _res: any, next: any) => { next(); },
   default: (req: any, _res: any, next: any) => {
     req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'], organizationId: 'org-1' };
@@ -904,5 +906,52 @@ describe('error propagation via next(err)', () => {
     const app = buildAppWithErrHandler();
     const res = await request(app).post('/billing/portal-session');
     expect(res.status).toBe(500);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Additional coverage: no-org branches for invoice, subscribe,      */
+/*  and portal-session                                                */
+/* ------------------------------------------------------------------ */
+describe('POST /billing/invoice — no organization', () => {
+  it('returns 403 when user has no organizationId', async () => {
+    mockProtect.mockImplementationOnce((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'] };
+      next();
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/billing/invoice')
+      .send({ amount_cents: 1000 });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('No active organization.');
+  });
+});
+
+describe('POST /billing/subscribe — no organization', () => {
+  it('returns 403 when user has no organizationId', async () => {
+    mockProtect.mockImplementationOnce((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'] };
+      next();
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/billing/subscribe')
+      .send({ tier: 'STARTER', priceId: 'price_123' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('No active organization.');
+  });
+});
+
+describe('POST /billing/portal-session — no organization', () => {
+  it('returns 403 when user has no organizationId', async () => {
+    mockProtect.mockImplementationOnce((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', email: 'test@example.com', roles: ['LAWYER'] };
+      next();
+    });
+    const app = buildApp();
+    const res = await request(app).post('/billing/portal-session');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('No active organization.');
   });
 });

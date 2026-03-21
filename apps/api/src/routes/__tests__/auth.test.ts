@@ -784,3 +784,196 @@ describe('POST /api/auth/logout', () => {
     expect(res.body.ok).toBe(true);
   });
 });
+
+// ── Error propagation tests (next(err) catch blocks) ────────────────────────
+
+function buildAppWithErrorHandler() {
+  const app = express();
+  app.use(express.json());
+  app.use(cookieParser());
+  app.use('/auth', router);
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    res.status(500).json({ error: err.message });
+  });
+  return app;
+}
+
+describe('POST /api/auth/register — next(err) for non-P2002 errors', () => {
+  it('propagates non-P2002 errors to the error handler via next()', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    mockBcrypt.hash.mockResolvedValue('hash');
+    mockPrisma.$transaction.mockRejectedValue(new Error('unexpected DB failure'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app).post('/auth/register').send(validRegisterPayload);
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('unexpected DB failure');
+  });
+});
+
+describe('POST /api/auth/login — rate-limit (account_locked)', () => {
+  it('returns 429 when account is locked due to too many failed attempts', async () => {
+    // Trigger enough failed attempts to lock the account
+    const email = `locked-${Date.now()}@example.com`;
+    const payload = { email, password: 'wrongpassword' };
+
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', email, passwordHash: 'hash' });
+    mockBcrypt.compare.mockResolvedValue(false);
+
+    const app = buildApp();
+
+    // Make 5 failed login attempts to trigger the lockout
+    for (let i = 0; i < 5; i++) {
+      await request(app).post('/auth/login').send(payload);
+    }
+
+    // The 6th attempt should be blocked
+    const res = await request(app).post('/auth/login').send(payload);
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe('account_locked');
+    expect(res.body.retryAfterSeconds).toBeDefined();
+  });
+});
+
+describe('POST /api/auth/refresh-token — next(err) error propagation', () => {
+  it('propagates unexpected errors via next()', async () => {
+    const { rotateSession } = await import('../../lib/session.js');
+    (rotateSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('session crash'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .post('/auth/refresh-token')
+      .set('Cookie', 'cc_rt=some-token');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('session crash');
+  });
+});
+
+describe('POST /api/auth/logout — next(err) error propagation', () => {
+  it('propagates unexpected errors via next()', async () => {
+    const { deleteSession } = await import('../../lib/session.js');
+    (deleteSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('redis down'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Cookie', 'cc_rt=some-refresh-token');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('redis down');
+  });
+});
+
+describe('POST /api/auth/change-password — next(err) error propagation', () => {
+  it('propagates unexpected errors via next()', async () => {
+    mockPrisma.user.findUniqueOrThrow.mockRejectedValue(new Error('DB read failure'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .post('/auth/change-password')
+      .set('Authorization', 'Bearer any-token')
+      .send({ currentPassword: 'OldPassword1!', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB read failure');
+  });
+});
+
+describe('GET /api/auth/verify-email — next(err) error propagation', () => {
+  it('propagates unexpected errors via next()', async () => {
+    mockPrisma.user.findUnique.mockRejectedValue(new Error('DB lookup failure'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .get('/auth/verify-email?token=some-token');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB lookup failure');
+  });
+});
+
+describe('POST /api/auth/resend-verification — edge cases', () => {
+  it('computes lastSent=0 when verifyTokenExp is null (never sent)', async () => {
+    // When verifyTokenExp is null, the code takes the path: lastSent = 0
+    // which means hoursSinceLast will be large and the rate-limit won't trigger.
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@b.com', firstName: 'A', emailVerifiedAt: null, verifyTokenExp: null,
+    });
+    mockPrisma.user.update = vi.fn().mockResolvedValue({});
+    const { sendEmail } = await import('../../services/email.service.js');
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(sendEmail).toHaveBeenCalled();
+  });
+
+  it('propagates unexpected errors via next()', async () => {
+    mockPrisma.user.findUnique.mockRejectedValue(new Error('DB lookup failure'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .post('/auth/resend-verification')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB lookup failure');
+  });
+});
+
+describe('POST /api/auth/forgot-password — next(err) error propagation', () => {
+  it('propagates unexpected errors via next()', async () => {
+    mockPrisma.user.findUnique.mockRejectedValue(new Error('DB failure'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .post('/auth/forgot-password')
+      .send({ email: 'a@b.com' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+});
+
+describe('POST /api/auth/reset-password — next(err) error propagation', () => {
+  it('propagates unexpected errors via next()', async () => {
+    mockPrisma.user.findUnique.mockRejectedValue(new Error('DB failure'));
+
+    const app = buildAppWithErrorHandler();
+    const res = await request(app)
+      .post('/auth/reset-password')
+      .send({ token: 'some-token', newPassword: 'NewPassword123!' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+});
+
+// ── enqueueEmail with emailQueue present (line 24) ──────────────────────────
+
+describe('POST /api/auth/register — emailQueue path', () => {
+  it('enqueues email via emailQueue.add when emailQueue is not null', async () => {
+    // Override the emailQueue mock to provide a working queue
+    const { emailQueue } = await import('../../queues/index.js');
+    const mockAdd = vi.fn().mockResolvedValue(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    (emailQueue as any) ?? undefined; // ensure we can assign
+    const queuesMod = await import('../../queues/index.js');
+    // Directly mutate the module export for this test
+    Object.defineProperty(queuesMod, 'emailQueue', { value: { add: mockAdd }, writable: true });
+
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.organization.findUnique.mockResolvedValue(null);
+    mockBcrypt.hash.mockResolvedValue('hashed-password');
+
+    const newUser = { id: 'u1', email: 'new@example.com', firstName: 'Alice', lastName: 'Smith', name: 'Alice Smith', role: 'CLIENT', createdAt: new Date() };
+    const newOrg = { id: 'org-1', name: 'Acme Law', slug: 'acme-law' };
+    mockPrisma.$transaction.mockResolvedValue({ user: newUser, organization: newOrg });
+
+    const app = buildApp();
+    const res = await request(app).post('/auth/register').send(validRegisterPayload);
+    expect(res.status).toBe(201);
+    expect(mockAdd).toHaveBeenCalledWith('send', expect.objectContaining({ to: 'new@example.com' }));
+
+    // Restore emailQueue to null
+    Object.defineProperty(queuesMod, 'emailQueue', { value: null, writable: true });
+  });
+});

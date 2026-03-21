@@ -32,6 +32,11 @@ const mockPrisma = {
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
 
+const mockWebhookQueueAdd = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../queues/index.js', () => ({
+  webhookQueue: { add: (...args: any[]) => mockWebhookQueueAdd(...args) },
+}));
+
 const { default: router } = await import('../tasks.js');
 
 function buildApp(orgId = 'org-1', userId = 'user-1') {
@@ -350,5 +355,40 @@ describe('error propagation via next(err)', () => {
     mockPrisma.task.delete.mockRejectedValue(new Error('DB error'));
     const res = await request(buildAppWithErrorHandler()).delete('/task-1');
     expect(res.status).toBe(500);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  webhookQueue.add on task completion                                */
+/* ------------------------------------------------------------------ */
+describe('PATCH /api/tasks/:id — webhookQueue fires on task completion', () => {
+  it('fires webhookQueue.add when task is newly completed', async () => {
+    const now = new Date().toISOString();
+    // existing task has no completedAt (not yet completed)
+    mockPrisma.task.findFirst.mockResolvedValue({ ...sampleTask, completedAt: null });
+    mockPrisma.task.update.mockResolvedValue({ ...sampleTask, completedAt: new Date(now), id: 'task-1', title: 'Draft contract', matterId: 'matter-1' });
+
+    const res = await request(buildApp()).patch('/task-1').send({ completedAt: now });
+    expect(res.status).toBe(200);
+    expect(mockWebhookQueueAdd).toHaveBeenCalledWith(
+      'task.completed',
+      expect.objectContaining({
+        organizationId: 'org-1',
+        event: 'task.completed',
+        payload: expect.objectContaining({ taskId: 'task-1' }),
+      }),
+    );
+  });
+
+  it('does not fire webhookQueue.add when task was already completed', async () => {
+    const existingCompleted = new Date('2026-01-01');
+    const now = new Date().toISOString();
+    mockPrisma.task.findFirst.mockResolvedValue({ ...sampleTask, completedAt: existingCompleted });
+    mockPrisma.task.update.mockResolvedValue({ ...sampleTask, completedAt: new Date(now) });
+    mockWebhookQueueAdd.mockClear();
+
+    const res = await request(buildApp()).patch('/task-1').send({ completedAt: now });
+    expect(res.status).toBe(200);
+    expect(mockWebhookQueueAdd).not.toHaveBeenCalled();
   });
 });

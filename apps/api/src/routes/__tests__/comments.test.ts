@@ -171,6 +171,15 @@ describe('POST /api/comments', () => {
     expect(res.body.error).toMatch(/document not found/i);
   });
 
+  it('returns 404 when contractVersionId does not belong to org (IDOR guard)', async () => {
+    mockPrisma.contractVersion.findFirst.mockResolvedValue(null);
+    const res = await request(buildApp())
+      .post('/')
+      .send({ bodyMd: 'note', contractVersionId: 'cltest1234567890123456789' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/contract version not found/i);
+  });
+
   it('creates comment with authorId and organizationId', async () => {
     mockPrisma.matter.findFirst.mockResolvedValue({ id: 'matter-1' }); // org owns it
     mockPrisma.comment.create.mockResolvedValue({ ...sampleComment });

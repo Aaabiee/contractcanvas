@@ -308,3 +308,50 @@ describe('GET /share/:token', () => {
     expect(res.body.resource.id).toBe('d1');
   });
 });
+
+// ── error propagation via next(err) ──────────────────────────────────────────
+
+describe('error propagation via next(err)', () => {
+  function buildWithErrHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', organizationId: orgId };
+      next();
+    });
+    app.use('/', router);
+    app.use('/share', shareTokenRouter);
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      res.status(500).json({ error: err.message });
+    });
+    return app;
+  }
+
+  it('GET / propagates DB errors', async () => {
+    mockPrisma.$transaction.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler()).get('/');
+    expect(res.status).toBe(500);
+  });
+
+  it('POST / propagates DB errors', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'clxxxxxxxxxxxxxxxxxxxx' });
+    mockPrisma.shareLink.create.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler())
+      .post('/')
+      .send({ resourceType: 'contract', resourceId: 'clxxxxxxxxxxxxxxxxxxxx' });
+    expect(res.status).toBe(500);
+  });
+
+  it('DELETE /:id propagates DB errors', async () => {
+    mockPrisma.shareLink.findFirst.mockResolvedValue({ id: 'sl-1', organizationId: 'org-1' });
+    mockPrisma.shareLink.delete.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler()).delete('/sl-1');
+    expect(res.status).toBe(500);
+  });
+
+  it('GET /share/:token propagates DB errors', async () => {
+    mockPrisma.shareLink.findUnique.mockRejectedValue(new Error('DB error'));
+    const res = await request(buildWithErrHandler()).get('/share/some-token');
+    expect(res.status).toBe(500);
+  });
+});

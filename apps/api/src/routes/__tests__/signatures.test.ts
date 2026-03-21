@@ -542,3 +542,84 @@ describe('error propagation via next(err)', () => {
     expect(res.status).toBe(500);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Additional coverage: no-org branches for GET /:id, void, resend   */
+/* ------------------------------------------------------------------ */
+
+describe('GET /api/signatures/:id — no organization', () => {
+  it('returns 403 when no active organization', async () => {
+    const app = buildAppNoOrg();
+    const res = await request(app).get('/env-1');
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/signatures/:id/void — no organization', () => {
+  it('returns 403 when no active organization', async () => {
+    const app = buildAppNoOrg();
+    const res = await request(app).post('/env-1/void').send({ reason: 'test' });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/signatures/:id/resend — no organization', () => {
+  it('returns 403 when no active organization', async () => {
+    const app = buildAppNoOrg();
+    const res = await request(app).post('/env-1/resend');
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /webhook/:provider — webhook next(error) propagation', () => {
+  it('propagates errors from webhook handler via next(error)', async () => {
+    mockPrisma.signatureEnvelope.findFirst.mockRejectedValue(new Error('DB failure'));
+
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', organizationId: 'org-1' };
+      next();
+    });
+    app.use('/webhook', signatureWebhookRouter);
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      res.status(500).json({ error: err.message });
+    });
+
+    const res = await request(app).post('/webhook/docusign').send({
+      event: 'completed',
+      data: { envelopeId: 'ds_123' },
+    });
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /webhook/:provider — production signature verification', () => {
+  it('returns 401 when webhook signature is invalid in production', async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const { getProvider } = await import('../../services/signature-provider.js');
+      (getProvider as ReturnType<typeof vi.fn>).mockReturnValue({
+        name: 'stub',
+        createEnvelope: vi.fn(),
+        voidEnvelope: vi.fn(),
+        getStatus: vi.fn(),
+        verifyWebhook: vi.fn().mockReturnValue(false),
+      });
+
+      const app = express();
+      app.use(express.json());
+      app.use('/webhook', signatureWebhookRouter);
+
+      const res = await request(app)
+        .post('/webhook/docusign')
+        .set('x-docusign-signature-1', 'invalid')
+        .send({ event: 'completed', data: { envelopeId: 'ds_123' } });
+      expect(res.status).toBe(401);
+      expect(res.body.error).toMatch(/invalid webhook signature/i);
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+});

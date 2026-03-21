@@ -398,3 +398,4 @@ describe('requireEmailVerified middleware', () => {
     expect(next).toHaveBeenCalledWith();
   });
 });
+

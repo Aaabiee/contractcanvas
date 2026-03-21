@@ -225,3 +225,62 @@ describe('DELETE /api/clauses/:id', () => {
     expect(mockPrisma.clause.delete).toHaveBeenCalledWith({ where: { id: 'clause-1' } });
   });
 });
+
+// ── Error propagation via next(error) ────────────────────────────────────────
+
+describe('error propagation via next(error)', () => {
+  function buildAppWithErrorHandler(orgId = 'org-1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-1', organizationId: orgId };
+      next();
+    });
+    app.use('/', router);
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      res.status(500).json({ error: err.message });
+    });
+    return app;
+  }
+
+  it('GET / propagates DB errors via next()', async () => {
+    mockPrisma.clause.findMany.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler()).get('/');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+
+  it('GET /:id propagates DB errors via next()', async () => {
+    mockPrisma.clause.findFirst.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler()).get('/clause-1');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+
+  it('POST / propagates DB errors via next()', async () => {
+    mockPrisma.clause.create.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler())
+      .post('/')
+      .send({ title: 'T', bodyMd: 'B' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+
+  it('PATCH /:id propagates DB errors via next()', async () => {
+    mockPrisma.clause.findFirst.mockResolvedValue(sampleClause);
+    mockPrisma.clause.update.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler())
+      .patch('/clause-1')
+      .send({ bodyMd: 'updated' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+
+  it('DELETE /:id propagates DB errors via next()', async () => {
+    mockPrisma.clause.findFirst.mockResolvedValue(sampleClause);
+    mockPrisma.clause.delete.mockRejectedValue(new Error('DB failure'));
+    const res = await request(buildAppWithErrorHandler()).delete('/clause-1');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB failure');
+  });
+});

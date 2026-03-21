@@ -34,6 +34,14 @@ const mockPrisma = {
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
 
+const mockWebhookAdd = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../queues/index.js', () => ({
+  webhookQueue: { add: mockWebhookAdd },
+  emailQueue: null,
+  pdfQueue: null,
+  cleanupQueue: null,
+}));
+
 const { router } = await import('../contracts.js');
 
 function buildApp(orgId = 'org-1', userId = 'user-1') {
@@ -442,6 +450,33 @@ describe('PATCH /api/contracts/:id — invalid status transition', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('NEGOTIATION');
   });
+
+  it('enqueues webhook via webhookQueue.add on valid status transition', async () => {
+    mockWebhookAdd.mockClear();
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      status: 'DRAFT',
+      updatedAt: new Date(),
+    });
+    mockPrisma.contract.update.mockResolvedValue({ ...sampleContract, status: 'NEGOTIATION' });
+    const app = buildApp();
+    const res = await request(app)
+      .patch('/contract-1')
+      .send({ status: 'NEGOTIATION' });
+    expect(res.status).toBe(200);
+    expect(mockWebhookAdd).toHaveBeenCalledWith(
+      'contract.status_changed',
+      expect.objectContaining({
+        organizationId: 'org-1',
+        event: 'contract.status_changed',
+        payload: expect.objectContaining({
+          contractId: 'contract-1',
+          oldStatus: 'DRAFT',
+          newStatus: 'NEGOTIATION',
+        }),
+      })
+    );
+  });
 });
 
 // ── POST /:id/generate-pdf ──────────────────────────────────────────────────
@@ -514,5 +549,67 @@ describe('POST /api/contracts/:id/generate-pdf', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/application\/pdf/);
     expect(res.headers['content-disposition']).toMatch(/attachment/);
+  });
+
+  it('returns PDF on success when contract has no currentVersion (version undefined)', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      organization: { name: 'Acme' },
+      currentVersion: null,
+    });
+    const pdfBuf = Buffer.from('%PDF-1.4 mock');
+    mockGeneratePdf.mockResolvedValue(pdfBuf);
+
+    const app = buildPdfApp();
+    const res = await request(app).post('/contract-1/generate-pdf');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/pdf/);
+    // generateContractPdf should have been called with version: undefined
+    expect(mockGeneratePdf).toHaveBeenCalledWith(
+      expect.objectContaining({ version: undefined })
+    );
+  });
+
+  it('returns 503 when generateContractPdf throws "puppeteer not installed"', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      organization: { name: 'Acme' },
+      currentVersion: { number: 1, title: 'Draft' },
+    });
+    mockGeneratePdf.mockRejectedValue(new Error('puppeteer not installed'));
+
+    const app = buildPdfApp();
+    const res = await request(app).post('/contract-1/generate-pdf');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('pdf_unavailable');
+    expect(res.body.message).toMatch(/not configured/i);
+  });
+
+  it('propagates non-puppeteer errors from generateContractPdf via next()', async () => {
+    mockPrisma.contract.findFirst.mockResolvedValue({
+      ...sampleContract,
+      organization: { name: 'Acme' },
+      currentVersion: { number: 1, title: 'Draft' },
+    });
+    mockGeneratePdf.mockRejectedValue(new Error('unexpected PDF error'));
+
+    function buildPdfAppWithErrHandler() {
+      const app = express();
+      app.use(express.json());
+      app.use((req: any, _res: any, next: any) => {
+        req.user = { id: 'user-1', organizationId: 'org-1' };
+        next();
+      });
+      app.use('/', pdfRouter);
+      app.use((err: any, _req: any, res: any, _next: any) => {
+        res.status(500).json({ error: err.message });
+      });
+      return app;
+    }
+
+    const app = buildPdfAppWithErrHandler();
+    const res = await request(app).post('/contract-1/generate-pdf');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('unexpected PDF error');
   });
 });

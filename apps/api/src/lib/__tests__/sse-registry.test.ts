@@ -61,4 +61,25 @@ describe('sse-registry (local mode, no Redis)', () => {
     pushToUser('user-4', 'test', { x: 2 });
     expect(badRes.write).toHaveBeenCalledTimes(1);
   });
+
+  it('removes only the stale connection and keeps healthy ones on write error', () => {
+    const badRes: any = { write: vi.fn().mockImplementation(() => { throw new Error('broken pipe'); }) };
+    const goodRes: any = { write: vi.fn() };
+    addClient('user-5', badRes);
+    addClient('user-5', goodRes);
+
+    pushToUser('user-5', 'test', { x: 1 });
+
+    // The bad connection should be removed, but the good one should still receive writes
+    expect(badRes.write).toHaveBeenCalledTimes(1);
+    expect(goodRes.write).toHaveBeenCalledTimes(1);
+
+    // Second push: only goodRes should get the write
+    pushToUser('user-5', 'test', { x: 2 });
+    expect(badRes.write).toHaveBeenCalledTimes(1); // still 1 — was removed
+    expect(goodRes.write).toHaveBeenCalledTimes(2);
+
+    // user-5 should still be in connectedUserCount since goodRes remains
+    expect(connectedUserCount()).toBeGreaterThanOrEqual(1);
+  });
 });
