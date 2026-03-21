@@ -28,6 +28,7 @@ import { startEmailWorker } from './queues/email.worker.js';
 import { startWebhookWorker } from './queues/webhook.worker.js';
 import { startPdfWorker } from './queues/pdf.worker.js';
 import { startCleanupWorker } from './queues/cleanup.worker.js';
+import { closeBrowser } from './services/pdf.service.js';
 
 const app = express();
 
@@ -69,12 +70,18 @@ const authLimiter = rateLimit({
   message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
+// Only treat the header as a real API key if it matches the expected prefix format.
+// This prevents attackers from sending an empty or garbage x-api-key header to
+// bypass the stricter per-IP rate limit and land in the more generous API-key bucket.
+const API_KEY_RE = /^cc_(live|test)_[a-f0-9]{16,}$/;
+const hasValidApiKeyHeader = (req: express.Request): boolean => API_KEY_RE.test(req.header('x-api-key') ?? '');
+
 const apiLimiter = rateLimit({
   windowMs:        15 * 60 * 1000,
   max:             300,
   standardHeaders: true,
   legacyHeaders:   false,
-  skip:            (req) => !!req.header('x-api-key'),
+  skip:            hasValidApiKeyHeader,
   message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
@@ -87,7 +94,7 @@ const apiKeyLimiter = rateLimit({
     const key = req.header('x-api-key');
     return key ? crypto.createHash('sha256').update(key).digest('hex').slice(0, 16) : (req.ip ?? 'unknown');
   },
-  skip:            (req) => !req.header('x-api-key'),
+  skip:            (req) => !hasValidApiKeyHeader(req),
   message:         { error: 'too_many_requests', message: 'Too many requests, please try again later.' },
 });
 
@@ -217,10 +224,11 @@ async function shutdown(signal: string) {
   server.close(async () => {
     logger.info('HTTP server closed');
     try {
+      await closeBrowser();
       await prisma.$disconnect();
       logger.info('Prisma disconnected');
     } catch (e) {
-      logger.error({ err: e }, 'Error disconnecting Prisma');
+      logger.error({ err: e }, 'Error during shutdown cleanup');
     } finally {
       process.exit(0);
     }

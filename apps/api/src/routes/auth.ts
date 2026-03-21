@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../prisma.js';
 import { jwt as jwtConfig } from '../config.js';
-import { protect } from '../middleware/auth.js';
+import { protect, requireEmailVerified } from '../middleware/auth.js';
 import { blacklistToken } from '../lib/redis.js';
 import {
   createSession,
@@ -424,7 +424,7 @@ router.get('/me', protect, (req: Request, res: Response) => {
   res.json(req.user);
 });
 
-router.post('/change-password', protect, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/change-password', protect, requireEmailVerified, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = ChangePasswordSchema.safeParse(req.body);
     if (!parsed.success) {

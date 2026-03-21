@@ -42,7 +42,10 @@ if (JWKS_URI) {
     logger.info({ jwksUri: JWKS_URI }, 'Using remote JWKS');
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.warn({ jwksUri: JWKS_URI, err: message }, 'Failed to initialize JWKS');
+    // When an OIDC issuer is explicitly configured, JWKS *must* initialize.
+    // Falling back to HS256 would silently downgrade security, so fail hard.
+    logger.error({ jwksUri: JWKS_URI, err: message }, 'FATAL: Failed to initialize JWKS — refusing to fall back to HS256');
+    throw new Error(`JWKS initialization failed for ${JWKS_URI}: ${message}`);
   }
 }
 

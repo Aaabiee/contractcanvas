@@ -1,18 +1,54 @@
 import { logger } from '../lib/logger.js';
 import { sanitizeMarkdown } from '../lib/sanitize.js';
 
-async function getBrowser() {
-  try {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore – puppeteer is an optional dependency; guarded at runtime
-    const puppeteer = await import('puppeteer');
-    return puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    });
-  } catch {
-    throw new Error('PDF generation unavailable (puppeteer not installed)');
+// Lazy singleton browser — puppeteer is optional so the handle is typed as `any`.
+
+let browserInstance: any = null;
+let browserLaunching: Promise<any> | null = null;
+
+async function getBrowser(): Promise<any> {
+  if (browserInstance) return browserInstance;
+
+  // Prevent multiple concurrent launches during startup
+  if (browserLaunching) return browserLaunching;
+
+  browserLaunching = (async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore – puppeteer is an optional dependency; guarded at runtime
+      const puppeteer = await import('puppeteer');
+      const browser = await puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      });
+
+      // If the browser crashes or is killed, clear the singleton so next call relaunches.
+      browser.on('disconnected', () => {
+        logger.warn('Puppeteer browser disconnected — will relaunch on next PDF request');
+        browserInstance = null;
+        browserLaunching = null;
+      });
+
+      browserInstance = browser;
+      browserLaunching = null;
+      logger.info('Puppeteer browser launched (singleton)');
+      return browser;
+    } catch {
+      browserLaunching = null;
+      throw new Error('PDF generation unavailable (puppeteer not installed)');
+    }
+  })();
+
+  return browserLaunching;
+}
+
+/** Graceful shutdown — close the browser if it's running. */
+export async function closeBrowser(): Promise<void> {
+  if (browserInstance) {
+    await browserInstance.close().catch(() => {});
+    browserInstance = null;
+    browserLaunching = null;
   }
 }
 
@@ -64,13 +100,12 @@ function buildHtml(data: PdfContractData): string {
 
 export async function generateContractPdf(data: PdfContractData): Promise<Buffer> {
   const browser = await getBrowser();
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     await page.setContent(buildHtml(data), { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({ format: 'A4', margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' }, printBackground: false });
-    await page.close();
     return Buffer.from(pdf);
   } finally {
-    await browser.close();
+    await page.close();
   }
 }

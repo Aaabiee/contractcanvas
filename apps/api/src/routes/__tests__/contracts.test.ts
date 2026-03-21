@@ -348,7 +348,7 @@ describe('error propagation via next(err)', () => {
   });
 
   it('PATCH /:id propagates DB errors', async () => {
-    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1' });
+    mockPrisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING_SIGNATURE', updatedAt: new Date() });
     mockPrisma.contract.update.mockRejectedValue(new Error('DB'));
     const res = await request(buildWithErrHandler()).patch('/c1').send({ status: 'EXECUTED' });
     expect(res.status).toBe(500);

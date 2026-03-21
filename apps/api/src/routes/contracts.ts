@@ -23,11 +23,20 @@ const CreateContractSchema = z.object({
   currency:   CurrencyCode,
 });
 
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT:             ['NEGOTIATION', 'ARCHIVED'],
+  NEGOTIATION:       ['DRAFT', 'PENDING_SIGNATURE', 'ARCHIVED'],
+  PENDING_SIGNATURE: ['NEGOTIATION', 'EXECUTED', 'ARCHIVED'],
+  EXECUTED:          ['ARCHIVED'],
+  ARCHIVED:          ['DRAFT'],
+};
+
 const UpdateContractSchema = z.object({
   title:      z.string().min(1).optional(),
   status:     z.enum(['DRAFT', 'NEGOTIATION', 'PENDING_SIGNATURE', 'EXECUTED', 'ARCHIVED']).optional(),
   valueCents: z.number().int().optional().nullable(),
   currency:   CurrencyCode,
+  updatedAt:  z.coerce.date().optional(),
 });
 
 const CreateVersionSchema = z.object({
@@ -147,13 +156,35 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    const updatedContract = await prisma.contract.update({ where: { id }, data: validation.data });
+    // Optimistic lock: reject if row was modified since the client last read it.
+    const { updatedAt: clientUpdatedAt, ...updateFields } = validation.data;
+    if (clientUpdatedAt && existing.updatedAt.getTime() !== clientUpdatedAt.getTime()) {
+      return res.status(409).json({
+        error: 'conflict',
+        message: 'Contract was modified by another user. Please refresh and try again.',
+        serverUpdatedAt: existing.updatedAt,
+      });
+    }
 
-    if (validation.data.status && validation.data.status !== existing.status) {
+    // Validate status transitions — prevent invalid jumps (e.g. EXECUTED → DRAFT).
+    if (updateFields.status && updateFields.status !== existing.status) {
+      const allowed = VALID_STATUS_TRANSITIONS[existing.status] ?? [];
+      if (!allowed.includes(updateFields.status)) {
+        return res.status(422).json({
+          error: 'invalid_transition',
+          message: `Cannot transition from ${existing.status} to ${updateFields.status}`,
+          allowed,
+        });
+      }
+    }
+
+    const updatedContract = await prisma.contract.update({ where: { id }, data: updateFields });
+
+    if (updateFields.status && updateFields.status !== existing.status) {
       enqueueWebhook(organizationId, 'contract.status_changed', {
         contractId: id,
         oldStatus:  existing.status,
-        newStatus:  validation.data.status,
+        newStatus:  updateFields.status,
       });
     }
 

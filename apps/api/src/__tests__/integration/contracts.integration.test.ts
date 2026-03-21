@@ -87,11 +87,11 @@ describe('GET /api/contracts', () => {
       .set('X-Organization-Id', orgHeader)
       .send({ title: 'Draft Contract', matterId });
 
-    await request(app)
-      .patch(`/api/contracts/${create.body.id}`)
-      .set('Authorization', authHeader)
-      .set('X-Organization-Id', orgHeader)
-      .send({ status: 'EXECUTED' });
+    // Walk through valid status transitions: DRAFT → NEGOTIATION → PENDING_SIGNATURE → EXECUTED
+    const patchHeaders = { Authorization: authHeader, 'X-Organization-Id': orgHeader };
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(patchHeaders).send({ status: 'NEGOTIATION' });
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(patchHeaders).send({ status: 'PENDING_SIGNATURE' });
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(patchHeaders).send({ status: 'EXECUTED' });
 
     await request(app).post('/api/contracts').set('Authorization', authHeader).set('X-Organization-Id', orgHeader).send({ title: 'Still Draft', matterId });
 
