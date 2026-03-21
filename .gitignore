@@ -19,3 +19,6 @@ apps/web/.vscode
 apps/api/prisma/.env
 apps/api/prisma/migrations
 .claude
+
+# Local planning documents
+PRODUCTION_ROADMAP.md

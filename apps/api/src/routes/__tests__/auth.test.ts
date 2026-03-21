@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
 
 process.env.JWT_SECRET = 'test-secret-key-for-testing';
 process.env.NODE_ENV = 'test';
@@ -19,12 +20,21 @@ const mockBcrypt = { hash: vi.fn(), compare: vi.fn() };
 vi.mock('bcrypt', () => ({ default: mockBcrypt }));
 
 const mockPrisma = {
-  user: { findUnique: vi.fn(), create: vi.fn() },
+  user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), create: vi.fn() },
   organization: { findUnique: vi.fn(), create: vi.fn() },
   organizationMember: { findMany: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
+
+vi.mock('../../lib/session.js', () => ({
+  createSession:          vi.fn().mockResolvedValue('mock-raw-refresh-token'),
+  rotateSession:          vi.fn(),
+  deleteSession:          vi.fn(),
+  revokeAllUserSessions:  vi.fn(),
+  REFRESH_COOKIE:         'cc_rt',
+  REFRESH_COOKIE_OPTS:    { httpOnly: true, secure: false, sameSite: 'strict', path: '/api/auth', maxAge: 2592000000 },
+}));
 
 vi.mock('../../middleware/auth.js', () => ({
   protect: (req: any, _res: any, next: any) => {
@@ -42,6 +52,7 @@ const { router } = await import('../auth.js');
 function buildApp() {
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
   app.use('/auth', router);
   return app;
 }
@@ -326,6 +337,10 @@ describe('POST /api/auth/register — autoLogin and redirect flags', () => {
     const newUser = { id: 'u1', email: 'new@example.com', firstName: 'Alice', lastName: 'Smith', name: 'Alice Smith', role: 'CLIENT', createdAt: new Date() };
     const newOrg  = { id: 'org-1', name: 'Acme Law', slug: 'acme-law' };
     mockPrisma.$transaction.mockResolvedValue({ user: newUser, organization: newOrg });
+    // buildTokenPayload needs findMany for org memberships when autoLogin=1
+    mockPrisma.organizationMember.findMany.mockResolvedValue([
+      { role: 'OWNER', createdAt: new Date(), organization: { id: 'org-1', name: 'Acme Law', slug: 'acme-law' } },
+    ]);
   });
 
   it('returns a token when autoLogin=1 is set', async () => {
@@ -461,9 +476,34 @@ describe('POST /api/auth/login — error paths', () => {
 });
 
 describe('POST /api/auth/refresh-token', () => {
-  it('returns a new JWT token for the authenticated user', async () => {
-    const user = { id: 'u1', email: 'a@b.com', firstName: 'A', lastName: 'B', name: 'A B', role: 'LAWYER' };
-    mockPrisma.user.findUnique.mockResolvedValue(user);
+  it('returns 401 when no refresh cookie is present', async () => {
+    const app = buildApp();
+    const res = await request(app).post('/auth/refresh-token');
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('No refresh token');
+  });
+
+  it('returns 401 when the refresh token is invalid or expired', async () => {
+    const { rotateSession } = await import('../../lib/session.js');
+    (rotateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/auth/refresh-token')
+      .set('Cookie', 'cc_rt=invalid-token');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Refresh token invalid or expired');
+  });
+
+  it('returns a new JWT and rotates the cookie on valid refresh token', async () => {
+    const { rotateSession } = await import('../../lib/session.js');
+    (rotateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      newRaw: 'new-raw-token',
+      userId: 'u1',
+    });
+
+    mockPrisma.user.findUniqueOrThrow.mockResolvedValue({ id: 'u1', email: 'a@b.com', role: 'LAWYER' });
     mockPrisma.organizationMember.findMany.mockResolvedValue([
       { role: 'OWNER', createdAt: new Date(), organization: { id: 'org-1', name: 'Acme', slug: 'acme' } },
     ]);
@@ -471,25 +511,13 @@ describe('POST /api/auth/refresh-token', () => {
     const app = buildApp();
     const res = await request(app)
       .post('/auth/refresh-token')
-      .set('Authorization', 'Bearer any-token');
+      .set('Cookie', 'cc_rt=valid-raw-token');
 
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTruthy();
     const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
     expect(decoded.sub).toBe('u1');
     expect(decoded.organizations).toHaveLength(1);
-  });
-
-  it('returns 401 when user is not found during refresh', async () => {
-    mockPrisma.user.findUnique.mockResolvedValue(null);
-
-    const app = buildApp();
-    const res = await request(app)
-      .post('/auth/refresh-token')
-      .set('Authorization', 'Bearer any-token');
-
-    expect(res.status).toBe(401);
-    expect(res.body.error).toBe('User not found');
   });
 });
 

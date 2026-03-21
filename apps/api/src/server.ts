@@ -3,6 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
 import { app as appCfg, DATABASE_URL as pgUrl, db } from './config.js';
 
@@ -30,6 +31,7 @@ app.use(cors({
 }));
 
 app.use(morgan('dev'));
+app.use(cookieParser());
 
 const authLimiter = rateLimit({
   windowMs:         15 * 60 * 1000,

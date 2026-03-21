@@ -1,151 +1,213 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, of, tap } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { HttpClient } from '@angular/common/http';
+import { Observable, of, timer, Subscription } from 'rxjs';
+import { tap, switchMap, map, catchError } from 'rxjs/operators';
 import { Router } from '@angular/router';
 
 export type AppRole = 'ADMIN' | 'LAWYER' | 'PARALEGAL' | 'CLIENT';
 
 export interface PublicName {
   firstName: string;
-  lastName: string;
+  lastName:  string;
   displayName?: string;
 }
 
 export interface User {
-  id: string;
-  email: string;
-  name: PublicName;
-  role: AppRole;
-  picture?: string;
+  id:        string;
+  email:     string;
+  name:      PublicName;
+  role:      AppRole;
+  picture?:  string;
   timezone?: string;
 }
 
 export interface RegisterResponse {
-  user: User;
+  user:  User;
   token: string;
 }
 
 export interface AuthResponse {
-  token: string;
-  user?: User;
+  token:  string;
+  user?:  User;
 }
 
 export interface RegisterPayloadCreate {
-  email: string;
-  password: string;
-  confirmPassword: string;
-  name: PublicName;
-  role: AppRole;
-  acceptTerms: true;
-  orgMode: 'create';
+  email:            string;
+  password:         string;
+  confirmPassword:  string;
+  name:             PublicName;
+  role:             AppRole;
+  acceptTerms:      true;
+  orgMode:          'create';
   organizationName: string;
   organizationSlug: string;
-  phone?: string;
-  picture?: string;
-  timezone?: string;
-  marketingOptIn?: boolean;
-  captchaToken?: string;
-  redirectTo?: string;
-  metadata?: Record<string, unknown>;
+  phone?:           string;
+  picture?:         string;
+  timezone?:        string;
+  marketingOptIn?:  boolean;
+  captchaToken?:    string;
+  redirectTo?:      string;
+  metadata?:        Record<string, unknown>;
 }
 
 export interface RegisterPayloadJoin {
-  email: string;
-  password: string;
+  email:           string;
+  password:        string;
   confirmPassword: string;
-  name: PublicName;
-  role: AppRole;
-  acceptTerms: true;
-  orgMode: 'join';
-  inviteToken: string;
-  phone?: string;
-  picture?: string;
-  timezone?: string;
+  name:            PublicName;
+  role:            AppRole;
+  acceptTerms:     true;
+  orgMode:         'join';
+  inviteToken:     string;
+  phone?:          string;
+  picture?:        string;
+  timezone?:       string;
   marketingOptIn?: boolean;
-  captchaToken?: string;
-  redirectTo?: string;
-  metadata?: Record<string, unknown>;
+  captchaToken?:   string;
+  redirectTo?:     string;
+  metadata?:       Record<string, unknown>;
 }
 
 export type RegisterPayload = RegisterPayloadCreate | RegisterPayloadJoin;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private http = inject(HttpClient);
-  private router = inject(Router);
+  private readonly http   = inject(HttpClient);
+  private readonly router = inject(Router);
 
-  private apiUrl = '/api/auth';
-  private tokenKey = 'contractcanvas_auth_token';
+  private readonly apiUrl = '/api/auth';
+
+  /**
+   * In-memory access token — never written to localStorage.
+   * Lost on page reload, recovered by silentRefresh() via the httpOnly cookie.
+   */
+  private _token = signal<string | null>(null);
 
   public currentUser = signal<User | null>(null);
 
+  private refreshTimer: Subscription | null = null;
+
   constructor() {
-    if (this.isLoggedIn()) {
-      this.getMe().subscribe();
-    }
+    // On every app boot, attempt a silent token refresh using the
+    // httpOnly cookie set by the server. Redirects to /login if no
+    // valid session exists.
+    this.silentRefresh().subscribe();
+  }
+
+  // ── public API ────────────────────────────────────────────────────────
+
+  login(credentials: { email: string; password: string }): Observable<AuthResponse> {
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/login`, credentials, { withCredentials: true })
+      .pipe(
+        tap(res => {
+          this._token.set(res.token);
+          this.scheduleRefresh(res.token);
+          if (res.user) this.currentUser.set(res.user);
+        }),
+        switchMap(res => {
+          if (!res.user) {
+            return this.getMe().pipe(map(() => res));
+          }
+          return of(res);
+        }),
+      );
   }
 
   register(payload: RegisterPayload): Observable<RegisterResponse> {
-    return this.http.post<RegisterResponse>(`${this.apiUrl}/register?autoLogin=1`, payload).pipe(
-      tap((res) => {
-        if (res.token) {
-          this.storeToken(res.token);
-          this.currentUser.set(res.user);
-        }
-      })
-    );
-  }
-
-  login(credentials: { email: string; password: string }): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/login`, credentials).pipe(
-      tap((response) => {
-        this.storeToken(response.token);
-        if (response.user) {
-          this.currentUser.set(response.user);
-        } else {
-          this.getMe().subscribe();
-        }
-      })
-    );
-  }
-
-  getMe(): Observable<User | null> {
-    const headers = this.getAuthHeaders();
-    if (!headers) {
-      return of(null);
-    }
-    return this.http.get<User>(`${this.apiUrl}/me`, { headers }).pipe(
-      tap((user) => this.currentUser.set(user)),
-      catchError((error) => {
-        console.error('Failed to fetch user', error);
-        this.logout();
-        return of(null);
-      })
-    );
+    return this.http
+      .post<RegisterResponse>(`${this.apiUrl}/register?autoLogin=1`, payload, { withCredentials: true })
+      .pipe(
+        tap(res => {
+          if (res.token) {
+            this._token.set(res.token);
+            this.scheduleRefresh(res.token);
+          }
+          if (res.user) this.currentUser.set(res.user);
+        }),
+      );
   }
 
   logout(): void {
-    localStorage.removeItem(this.tokenKey);
+    this.cancelRefreshTimer();
+    this._token.set(null);
     this.currentUser.set(null);
+    // Tell the server to delete the session and clear the cookie.
+    this.http
+      .post(`${this.apiUrl}/logout`, {}, { withCredentials: true })
+      .subscribe({ error: () => {} }); // fire-and-forget; ignore errors
     this.router.navigate(['/login']);
   }
 
-  private storeToken(token: string): void {
-    localStorage.setItem(this.tokenKey, token);
+  getMe(): Observable<User | null> {
+    if (!this._token()) return of(null);
+    return this.http.get<User>(`${this.apiUrl}/me`).pipe(
+      tap(user => this.currentUser.set(user)),
+      catchError(() => {
+        this.logout();
+        return of(null);
+      }),
+    );
   }
 
   getToken(): string | null {
-    return localStorage.getItem(this.tokenKey);
+    return this._token();
   }
 
   isLoggedIn(): boolean {
-    return !!this.getToken();
+    return !!this._token();
   }
 
-  private getAuthHeaders(): HttpHeaders | null {
-    const token = this.getToken();
-    if (!token) return null;
-    return new HttpHeaders({ Authorization: `Bearer ${token}` });
+  // ── private helpers ──────────────────────────────────────────────────
+
+  /**
+   * Calls POST /api/auth/refresh-token (which reads the httpOnly cookie).
+   * On success: stores new access token + reschedules next refresh.
+   * On failure: clears session state (user must log in again).
+   */
+  private silentRefresh(): Observable<boolean> {
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/refresh-token`, {}, { withCredentials: true })
+      .pipe(
+        tap(res => {
+          this._token.set(res.token);
+          this.scheduleRefresh(res.token);
+        }),
+        switchMap(() => this.getMe()),
+        map(() => true),
+        catchError(() => {
+          this._token.set(null);
+          this.currentUser.set(null);
+          return of(false);
+        }),
+      );
+  }
+
+  /**
+   * Schedules the next silent refresh 60 seconds before the JWT expires.
+   * Reads the `exp` claim directly from the token without a library.
+   */
+  private scheduleRefresh(token: string): void {
+    this.cancelRefreshTimer();
+    try {
+      const payload   = JSON.parse(atob(token.split('.')[1]));
+      const expiresMs = payload.exp * 1000;
+      const refreshIn = expiresMs - Date.now() - 60_000; // 60 s buffer
+      if (refreshIn <= 0) {
+        this.silentRefresh().subscribe();
+        return;
+      }
+      this.refreshTimer = timer(refreshIn)
+        .pipe(switchMap(() => this.silentRefresh()))
+        .subscribe();
+    } catch {
+      // Malformed token — log out
+      this.logout();
+    }
+  }
+
+  private cancelRefreshTimer(): void {
+    this.refreshTimer?.unsubscribe();
+    this.refreshTimer = null;
   }
 }
