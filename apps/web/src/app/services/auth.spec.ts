@@ -1,3 +1,4 @@
+import 'zone.js/testing';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';

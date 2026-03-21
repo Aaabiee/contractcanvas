@@ -1,3 +1,4 @@
+import 'zone.js/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { TasksComponent } from './tasks.component';
 import { TaskService } from '../../services/task.service';

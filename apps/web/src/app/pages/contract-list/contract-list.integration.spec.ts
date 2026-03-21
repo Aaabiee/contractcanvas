@@ -1,3 +1,4 @@
+import 'zone.js/testing';
 /**
  * Component integration tests for ContractListComponent.
  *

@@ -1,3 +1,4 @@
+import 'zone.js/testing';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { SearchComponent } from './search.component';
 import { SearchService, SearchResults } from '../../services/search.service';
