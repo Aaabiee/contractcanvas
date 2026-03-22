@@ -14,6 +14,11 @@ describe('errorInterceptor', () => {
   let router: Router;
 
   beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  beforeEach(() => {
     authService = { logout: jest.fn() };
 
     TestBed.configureTestingModule({
@@ -33,6 +38,7 @@ describe('errorInterceptor', () => {
 
   afterEach(() => {
     httpMock.verify();
+    jest.restoreAllMocks();
   });
 
   it('calls authService.logout() on 401', () => {

@@ -28,6 +28,14 @@ describe('LoginComponent', () => {
   let authService: AuthService;
   let router: Router;
 
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [

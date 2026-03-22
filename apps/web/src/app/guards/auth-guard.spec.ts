@@ -11,6 +11,14 @@ describe('authGuard', () => {
     TestBed.runInInjectionContext(() => authGuard(...args));
 
   beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  beforeEach(() => {
     authService = { isLoggedIn: jest.fn() };
 
     TestBed.configureTestingModule({

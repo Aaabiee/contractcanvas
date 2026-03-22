@@ -6,6 +6,14 @@ describe('LocaleService', () => {
   let service: LocaleService;
 
   beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  beforeEach(() => {
     localStorage.clear();
     TestBed.configureTestingModule({
       providers: [{ provide: LOCALE_ID, useValue: 'en' }],
