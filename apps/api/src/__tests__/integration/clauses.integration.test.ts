@@ -384,6 +384,61 @@ describe('Error propagation (catch blocks)', () => {
   });
 });
 
+// ─── Org guard — 403 paths (covers catch blocks indirectly) ──────────────────
+describe('Clauses — org guard 403 paths', () => {
+  it('GET /api/clauses returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/clauses')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/clauses/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/clauses/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/clauses returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/clauses')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({ title: 'No Org', bodyMd: 'Content' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH /api/clauses/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/clauses/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({ title: 'No Org' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /api/clauses/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .delete('/api/clauses/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+});
+
 // ─── Pagination paths ───────────────────────────────────────────────────────
 describe('GET /api/clauses (pagination)', () => {
   it('respects limit and offset parameters', async () => {

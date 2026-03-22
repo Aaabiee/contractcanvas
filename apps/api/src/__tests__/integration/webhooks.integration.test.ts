@@ -648,6 +648,121 @@ describe('GET /api/organizations/:orgId/webhooks/:webhookId/deliveries (seeded d
   });
 });
 
+// ─── URL validation edge cases (covers lines 20-21 isPrivateUrl) ────────────
+describe('POST /api/organizations/:orgId/webhooks — URL validation edge cases', () => {
+  it('returns 400 for .local domain', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'https://myserver.local/hook', events: ['contract.created'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private|internal/i);
+  });
+
+  it('returns 400 for .internal domain', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'https://myserver.internal/hook', events: ['contract.created'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private|internal/i);
+  });
+
+  it('returns 400 for 10.x.x.x private IP', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'https://10.0.0.1/hook', events: ['contract.created'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private|internal/i);
+  });
+
+  it('returns 400 for 127.x.x.x loopback IP', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'https://127.0.0.1/hook', events: ['contract.created'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private|internal/i);
+  });
+
+  it('returns 400 for 172.16.x.x private IP', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'https://172.16.0.1/hook', events: ['contract.created'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private|internal/i);
+  });
+});
+
+// ─── PATCH URL validation edge cases (covers PATCH private URL path) ─────────
+describe('PATCH /api/organizations/:orgId/webhooks/:webhookId — URL validation edge cases', () => {
+  it('returns 400 for .local domain on update', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'https://myserver.local/hook' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private|internal/i);
+  });
+});
+
+// ─── DELETE — cross-org for deliveries endpoint ──────────────────────────────
+describe('DELETE /api/organizations/:orgId/webhooks/:webhookId — additional 403 path', () => {
+  it('returns 403 when orgId does not match user org', async () => {
+    const a = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(a.orgHeader))
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    // Try to delete with the same user but using a different orgId in the URL
+    const res = await request(app)
+      .delete(hookUrl('cuid1234567890abcdefghijk', webhookId))
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader);
+
+    expect(res.status).toBe(403);
+  });
+});
+
 // ─── POST — creating webhook for a different org returns 403 ────────────────
 describe('POST /api/organizations/:orgId/webhooks (cross-org)', () => {
   it('returns 403 when creating a webhook for a different org', async () => {

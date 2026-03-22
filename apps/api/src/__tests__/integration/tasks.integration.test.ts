@@ -733,6 +733,103 @@ describe('GET /api/tasks/:id (cross-org)', () => {
   });
 });
 
+// ─── Tasks — org guard 403 paths (covers lines 61-62, 81-82, 122-123, 168-169, 183-184)
+describe('Tasks — org guard and error propagation paths', () => {
+  it('GET /api/tasks returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/tasks/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/tasks/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/tasks returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({ title: 'No Org', matterId: 'cuid1234567890abcdefghijk' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH /api/tasks/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/tasks/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({ title: 'No Org' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /api/tasks/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .delete('/api/tasks/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── PATCH /api/tasks/:id — webhook fires on first completion (covers lines 159-164) ─
+describe('PATCH /api/tasks/:id — webhook on first completion', () => {
+  it('fires webhook only on first completion (completedAt set when not previously completed)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'First Complete', matterId });
+
+    expect(task.body.completedAt).toBeNull();
+
+    // First completion should succeed and trigger webhook (lines 158-164)
+    const completedAt = new Date().toISOString();
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt });
+
+    expect(res.status).toBe(200);
+    expect(res.body.completedAt).not.toBeNull();
+
+    // Reopen and complete again — the webhook guard checks !existing.completedAt
+    await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: null });
+
+    const res2 = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: new Date().toISOString() });
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.completedAt).not.toBeNull();
+  });
+});
+
 // ─── GET /api/tasks — pagination ────────────────────────────────────────────
 describe('GET /api/tasks (pagination)', () => {
   it('respects limit and offset parameters', async () => {

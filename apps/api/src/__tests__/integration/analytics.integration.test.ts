@@ -262,4 +262,44 @@ describe('Analytics error propagation', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('overview returns 403 when user has no org context (covers line 28-29)', async () => {
+    const { userId } = await seedAuth(app);
+
+    // Remove org memberships so JWT has no org context
+    await db.organizationMember.deleteMany({ where: { userId } });
+
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/analytics/overview')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('contract-trends returns 403 for MEMBER role (covers line 86-87, 128-129 requireAdminOrOwner)', async () => {
+    const { orgHeader, userId, email } = await seedAuth(app);
+
+    await db.organizationMember.updateMany({
+      where: { userId, organizationId: orgHeader },
+      data:  { role: 'MEMBER' },
+    });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'Password1!' });
+    const memberHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/analytics/contract-trends')
+      .set('Authorization', memberHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(403);
+  });
 });

@@ -848,6 +848,52 @@ describe('POST /api/signatures/webhook/:provider', () => {
     expect(updated!.status).toBe('SIGNED');
   });
 
+  it('updates envelope via docusign webhook with EnvelopeStatus format', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId   = await seedMatter(authHeader, orgHeader);
+    const contractId = await seedContract(authHeader, orgHeader, matterId);
+
+    const create = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        contractId,
+        provider:   'docusign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    const envelope = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+
+    // Use the legacy EnvelopeStatus format
+    const res = await request(app)
+      .post('/api/signatures/webhook/docusign')
+      .send({
+        EnvelopeStatus: {
+          Status: 'delivered',
+          EnvelopeID: envelope!.providerId,
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const updated = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+    expect(updated!.status).toBe('VIEWED');
+  });
+
+  it('webhook returns 200 with ignored:true when newStatus is missing', async () => {
+    const res = await request(app)
+      .post('/api/signatures/webhook/docusign')
+      .send({
+        data: { envelopeId: 'some-id' },
+        // No event field, so newStatus will be undefined
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(true);
+  });
+
   it('handles hellosign webhook without signatures array', async () => {
     const { authHeader, orgHeader } = await seedAuth(app);
     const matterId   = await seedMatter(authHeader, orgHeader);

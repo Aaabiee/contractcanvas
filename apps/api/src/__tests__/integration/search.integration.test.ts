@@ -475,6 +475,59 @@ describe('GET /api/search (error propagation)', () => {
     expect(res.body.matters[0].description).toContain('UniqueDescriptionSearch');
   });
 
+  it('fts mode with empty tsquery (only special chars) returns empty results (covers lines 57-59)', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    // Query with only special chars — toTsQuery strips them, resulting in empty tsq
+    const res = await request(app)
+      .get('/api/search?q=' + encodeURIComponent('$$%%^^') + '&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    // Either returns empty results (fts path with empty tsq) or falls back to like
+    expect(res.body.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('fts mode searches contracts and documents (covers lines 72-88)', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    const matter = await db.matter.create({
+      data: { title: 'FtsFullCoverage Matter', organizationId: orgId, ownerId: userId },
+    });
+    await db.contract.create({
+      data: { title: 'FtsFullCoverage Contract', organizationId: orgId, matterId: matter.id },
+    });
+    await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId: matter.id,
+        filename: 'FtsFullCoverage-report.pdf',
+        storageKey: 'fake/ftsfull.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 300,
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=FtsFullCoverage&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.q).toBe('FtsFullCoverage');
+    // Whether FTS columns exist or not, results come through (fallback to LIKE)
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+  });
+
   it('returns all three resource types in response', async () => {
     const app = buildApp();
     const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);

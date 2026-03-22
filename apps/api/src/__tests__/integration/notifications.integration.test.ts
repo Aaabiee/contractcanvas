@@ -6,6 +6,7 @@
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import { buildApp, seedAuth, cleanDb } from './helpers.js';
+import { createNotification, createNotifications } from '../../lib/notify.js';
 
 const db  = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL } } });
 const app = buildApp();
@@ -345,5 +346,96 @@ describe('Notifications error/guard paths', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(3);
     expect(res.body.total).toBe(3);
+  });
+});
+
+// ─── lib/notify.ts — createNotification (lines 7-13) ────────────────────────
+describe('createNotification (lib/notify.ts)', () => {
+  it('creates a notification row in the database and returns it', async () => {
+    const { userId, orgId } = await seedAuth(app);
+
+    const notification = await createNotification({
+      user:           { connect: { id: userId } },
+      organization:   { connect: { id: orgId } },
+      type:           'SYSTEM',
+      title:          'Test via createNotification',
+      body:           'Integration test body',
+    });
+
+    expect(notification).toBeDefined();
+    expect(notification.id).toBeTruthy();
+    expect(notification.userId).toBe(userId);
+    expect(notification.title).toBe('Test via createNotification');
+
+    // Verify in DB
+    const dbRecord = await db.notification.findUnique({ where: { id: notification.id } });
+    expect(dbRecord).not.toBeNull();
+    expect(dbRecord!.type).toBe('SYSTEM');
+  });
+
+  it('notification created via createNotification appears in GET /api/notifications', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+
+    await createNotification({
+      user:           { connect: { id: userId } },
+      organization:   { connect: { id: orgId } },
+      type:           'SYSTEM',
+      title:          'Visible via API',
+    });
+
+    const res = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Visible via API');
+  });
+});
+
+// ─── lib/notify.ts — createNotifications (lines 15-23) ──────────────────────
+describe('createNotifications (lib/notify.ts)', () => {
+  it('creates multiple notifications in bulk', async () => {
+    const { userId, orgId } = await seedAuth(app);
+
+    const items = [
+      { userId, organizationId: orgId, type: 'SYSTEM' as const, title: 'Bulk 1' },
+      { userId, organizationId: orgId, type: 'SYSTEM' as const, title: 'Bulk 2' },
+      { userId, organizationId: orgId, type: 'REMINDER' as const, title: 'Bulk 3' },
+    ];
+
+    await createNotifications(items);
+
+    const count = await db.notification.count({ where: { userId } });
+    expect(count).toBe(3);
+  });
+
+  it('is a no-op when items array is empty', async () => {
+    await seedAuth(app);
+
+    // Should not throw and not create any rows
+    await createNotifications([]);
+
+    const total = await db.notification.count();
+    expect(total).toBe(0);
+  });
+
+  it('bulk notifications appear in GET /api/notifications', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+
+    await createNotifications([
+      { userId, organizationId: orgId, type: 'SYSTEM' as const, title: 'Bulk A' },
+      { userId, organizationId: orgId, type: 'SYSTEM' as const, title: 'Bulk B' },
+    ]);
+
+    const res = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.unreadCount).toBe(2);
   });
 });

@@ -702,6 +702,66 @@ describe('GET /api/documents/:id/download (cross-org)', () => {
   });
 });
 
+// ─── Additional coverage: org guard paths (covers lines 52, 65-66, 132-133) ─
+describe('Documents — org guard error paths', () => {
+  it('GET /api/documents returns 403 when org header does not match (covers line 132-133)', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/documents?matterId=some-id')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/documents/:id returns 403 when org header does not match', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/documents/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/documents/:id/download returns 403 when org header does not match', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/documents/cuid1234567890abcdefghijk/download')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /api/documents/:id returns 403 when org header does not match', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .delete('/api/documents/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/documents/upload returns 403 when org header does not match (covers line 65-66)', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'test.pdf', contentType: 'application/pdf' })
+      .field('matterId', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+});
+
 // ─── Additional coverage: error propagation (S3 send failure) ───────────────
 describe('POST /api/documents/upload (S3 error propagation)', () => {
   it('propagates error when S3 upload fails', async () => {

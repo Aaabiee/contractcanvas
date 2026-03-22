@@ -9,6 +9,7 @@
 
 import request from 'supertest';
 import express, { type Express } from 'express';
+import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
 import { router as authRouter } from '../../routes/auth.js';
 
@@ -17,9 +18,10 @@ const db = new PrismaClient({
   datasources: { db: { url: process.env.TEST_DATABASE_URL } },
 });
 
-function buildApp(): Express {
+function buildApp(opts?: { cookies?: boolean }): Express {
   const app = express();
   app.use(express.json());
+  if (opts?.cookies) app.use(cookieParser());
   app.use('/api/auth', authRouter);
   return app;
 }
@@ -38,6 +40,8 @@ const validPayload = {
 
 // ─── cleanup ────────────────────────────────────────────────────────────────
 afterEach(async () => {
+  await db.session.deleteMany();
+  await db.subscription.deleteMany();
   await db.organizationMember.deleteMany();
   await db.organization.deleteMany();
   await db.user.deleteMany();
@@ -728,5 +732,138 @@ describe('POST /api/auth/register — join mode', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/organization not found/i);
+  });
+});
+
+// ─── Session: MAX_SESSIONS eviction (session.ts lines 36-42) ───────────────
+describe('POST /api/auth/login — MAX_SESSIONS enforcement', () => {
+  const sessionEmail = 'session-evict@example.com';
+  const sessionPayload = {
+    ...validPayload,
+    email: sessionEmail,
+    organizationSlug: 'session-evict-org',
+    organizationName: 'Session Evict Org',
+  };
+
+  beforeEach(async () => {
+    await request(buildApp()).post('/api/auth/register').send(sessionPayload);
+    await db.user.updateMany({
+      where: { email: sessionEmail },
+      data:  { emailVerifiedAt: new Date(), verifyToken: null, verifyTokenExp: null },
+    });
+  });
+
+  it('evicts the oldest session when logging in more than 5 times', async () => {
+    const app = buildApp({ cookies: true });
+    const creds = { email: sessionEmail, password: validPayload.password };
+
+    // Login 6 times — MAX_SESSIONS_PER_USER is 5
+    for (let i = 0; i < 6; i++) {
+      const res = await request(app).post('/api/auth/login').send(creds);
+      expect(res.status).toBe(200);
+    }
+
+    // There should be at most 5 active (non-revoked, non-expired) sessions
+    const user = await db.user.findUnique({ where: { email: creds.email } });
+    const activeSessions = await db.session.findMany({
+      where: { userId: user!.id, revokedAt: null, expiresAt: { gt: new Date() } },
+    });
+    expect(activeSessions.length).toBeLessThanOrEqual(5);
+
+    // There should be at least 1 revoked session from the eviction
+    const revokedSessions = await db.session.findMany({
+      where: { userId: user!.id, revokedAt: { not: null } },
+    });
+    expect(revokedSessions.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── Session: refresh token rotation (session.ts lines 57-90) ──────────────
+describe('POST /api/auth/refresh-token — rotation with cookie-parser', () => {
+  const rotateEmail = 'rotate-refresh@example.com';
+  const rotatePayload = {
+    ...validPayload,
+    email: rotateEmail,
+    organizationSlug: 'rotate-org',
+    organizationName: 'Rotate Org',
+  };
+
+  beforeEach(async () => {
+    await request(buildApp()).post('/api/auth/register').send(rotatePayload);
+    await db.user.updateMany({
+      where: { email: rotateEmail },
+      data:  { emailVerifiedAt: new Date(), verifyToken: null, verifyTokenExp: null },
+    });
+  });
+
+  it('rotates the refresh token and returns a new access token', async () => {
+    const app = buildApp({ cookies: true });
+
+    // Login to get a refresh cookie
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: rotateEmail, password: validPayload.password });
+
+    expect(loginRes.status).toBe(200);
+
+    // Extract the cc_rt cookie from the Set-Cookie header
+    const setCookieHeaders = loginRes.headers['set-cookie'];
+    expect(setCookieHeaders).toBeDefined();
+
+    const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+    const refreshCookie = cookieArray.find((c: string) => c.startsWith('cc_rt='));
+    expect(refreshCookie).toBeDefined();
+
+    // Use the cookie to call refresh-token
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh-token')
+      .set('Cookie', refreshCookie!);
+
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.token).toBeTruthy();
+    expect(typeof refreshRes.body.token).toBe('string');
+
+    // The response should set a new refresh cookie (rotated)
+    const newSetCookie = refreshRes.headers['set-cookie'];
+    expect(newSetCookie).toBeDefined();
+    const newCookieArray = Array.isArray(newSetCookie) ? newSetCookie : [newSetCookie];
+    const newRefreshCookie = newCookieArray.find((c: string) => c.startsWith('cc_rt='));
+    expect(newRefreshCookie).toBeDefined();
+    // The new cookie should differ from the original
+    expect(newRefreshCookie).not.toBe(refreshCookie);
+  });
+
+  it('rejects the old refresh token after rotation (replay protection)', async () => {
+    const app = buildApp({ cookies: true });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: rotateEmail, password: validPayload.password });
+
+    const setCookieHeaders = loginRes.headers['set-cookie'];
+    const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+    const refreshCookie = cookieArray.find((c: string) => c.startsWith('cc_rt='));
+
+    // First rotation — should succeed
+    const firstRotation = await request(app)
+      .post('/api/auth/refresh-token')
+      .set('Cookie', refreshCookie!);
+    expect(firstRotation.status).toBe(200);
+
+    // Second rotation with the SAME (now-consumed) cookie — should fail
+    const secondRotation = await request(app)
+      .post('/api/auth/refresh-token')
+      .set('Cookie', refreshCookie!);
+    expect(secondRotation.status).toBe(401);
+  });
+
+  it('returns 401 for a completely invalid refresh token', async () => {
+    const app = buildApp({ cookies: true });
+    const res = await request(app)
+      .post('/api/auth/refresh-token')
+      .set('Cookie', 'cc_rt=0000000000000000000000000000000000000000000000000000000000000000');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/refresh token/i);
   });
 });

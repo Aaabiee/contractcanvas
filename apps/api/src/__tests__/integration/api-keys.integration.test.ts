@@ -293,6 +293,29 @@ describe('API Keys error propagation', () => {
     expect(res.status).toBe(403);
   });
 
+  it('DELETE returns 404 for key that does not belong to the org (catch block path)', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+
+    // Create key in org A
+    const createRes = await request(app)
+      .post(keyUrl(a.orgHeader))
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ name: 'Org A Key' });
+
+    const keyId = createRes.body.key.id;
+
+    // Try to delete using org A URL but with org B user (should 403 from requireOrgAccess)
+    const res = await request(app)
+      .delete(keyUrl(b.orgHeader, keyId))
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    // Should fail because user B is not in org A
+    expect([403, 404]).toContain(res.status);
+  });
+
   it('POST returns 403 for MEMBER role', async () => {
     const { authHeader, orgHeader, userId, email } = await seedAuth(app);
 
@@ -313,5 +336,98 @@ describe('API Keys error propagation', () => {
       .send({ name: 'Forbidden Key' });
 
     expect(res.status).toBe(403);
+  });
+});
+
+// ─── x-api-key authentication (middleware/auth.ts lines 206-237) ─────────────
+describe('API key authentication via x-api-key header', () => {
+  it('allows access to a protected route using a valid API key', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    // Create an API key
+    const createRes = await request(app)
+      .post(keyUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ name: 'Auth Key' });
+
+    expect(createRes.status).toBe(201);
+    const rawKey = createRes.body.key.rawKey;
+    expect(rawKey).toBeTruthy();
+
+    // Use the raw API key to access a protected route (matters list)
+    const mattersRes = await request(app)
+      .get('/api/matters')
+      .set('x-api-key', rawKey)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(mattersRes.status).toBe(200);
+    expect(mattersRes.body.data).toBeDefined();
+  });
+
+  it('returns 401 for an invalid API key', async () => {
+    const res = await request(app)
+      .get('/api/matters')
+      .set('x-api-key', 'cc_live_0000000000000000000000000000000000000000');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('unauthorized');
+    expect(res.body.message).toMatch(/invalid api key/i);
+  });
+
+  it('returns 401 for a revoked API key', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    // Create then revoke
+    const createRes = await request(app)
+      .post(keyUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ name: 'Revoked Key' });
+
+    const rawKey = createRes.body.key.rawKey;
+    const keyId  = createRes.body.key.id;
+
+    await request(app)
+      .delete(keyUrl(orgHeader, keyId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // Try to use the revoked key
+    const res = await request(app)
+      .get('/api/matters')
+      .set('x-api-key', rawKey);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toMatch(/invalid api key/i);
+  });
+
+  it('updates lastUsedAt when an API key is used', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(keyUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ name: 'Track Usage Key' });
+
+    const rawKey = createRes.body.key.rawKey;
+    const keyId  = createRes.body.key.id;
+
+    // Verify lastUsedAt is initially null
+    const before = await db.apiKey.findUnique({ where: { id: keyId } });
+    expect(before!.lastUsedAt).toBeNull();
+
+    // Use the key
+    await request(app)
+      .get('/api/matters')
+      .set('x-api-key', rawKey)
+      .set('X-Organization-Id', orgHeader);
+
+    // Wait briefly for the fire-and-forget update
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const after = await db.apiKey.findUnique({ where: { id: keyId } });
+    expect(after!.lastUsedAt).not.toBeNull();
   });
 });

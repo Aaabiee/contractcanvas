@@ -1,5 +1,6 @@
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
+import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { protect } from '../../middleware/auth.js';
 import { router as authRouter }          from '../../routes/auth.js';
@@ -45,9 +46,10 @@ function enrichOrgRole(req: Request, _res: Response, next: NextFunction): void {
   next();
 }
 
-export function buildApp(): Express {
+export function buildApp(opts?: { cookies?: boolean }): Express {
   const app = express();
   app.use(express.json());
+  if (opts?.cookies) app.use(cookieParser());
   app.use('/api/auth',          authRouter);
   app.use('/api/matters',       protect, mattersRouter);
   app.use('/api/contracts',     protect, contractsRouter);
@@ -157,6 +159,7 @@ export async function cleanDb(db: PrismaClient): Promise<void> {
   await db.contract.deleteMany();
   await db.matter.deleteMany();
   await db.clause.deleteMany();
+  await db.session.deleteMany();
   await db.organizationMember.deleteMany();
   await db.organization.deleteMany();
   await db.user.deleteMany();

@@ -411,4 +411,44 @@ describe('Audit logs error propagation', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('GET list returns 403 when organizationId is missing (covers lines 39-40)', async () => {
+    const { userId } = await seedAuth(app);
+
+    // Remove org memberships so user has no org context
+    await db.organizationMember.deleteMany({ where: { userId } });
+
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    // Use any org URL — user will be recognized as OWNER/ADMIN via enrichOrgRole
+    // but will have no organizationId from the JWT
+    const res = await request(app)
+      .get('/api/organizations/fake-org/audit-logs')
+      .set('Authorization', freshHeader);
+
+    // Should get 403 from either requireAdminOrOwner or the orgId check
+    expect(res.status).toBe(403);
+  });
+
+  it('CSV export returns 403 when organizationId is missing (covers lines 61-62)', async () => {
+    const { userId } = await seedAuth(app);
+
+    await db.organizationMember.deleteMany({ where: { userId } });
+
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/organizations/fake-org/audit-logs/export.csv')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
 });
