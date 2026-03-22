@@ -162,3 +162,144 @@ describe('POST /api/billing/webhooks/stripe', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── POST /api/billing/subscribe ────────────────────────────────────────────
+describe('POST /api/billing/subscribe', () => {
+  it('returns 401 without auth', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/billing/subscribe')
+      .send({ tier: 'STARTER', priceId: 'price_test' });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 501 when Stripe is not configured', async () => {
+    if (process.env['STRIPE_SECRET_KEY']) return;
+
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/billing/subscribe')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ tier: 'STARTER', priceId: 'price_test' });
+
+    expect(res.status).toBe(501);
+    expect(res.body.error).toMatch(/billing is not configured/i);
+  });
+});
+
+// ─── POST /api/billing/portal-session ───────────────────────────────────────
+describe('POST /api/billing/portal-session', () => {
+  it('returns 401 without auth', async () => {
+    const app = buildApp();
+    const res = await request(app).post('/api/billing/portal-session');
+
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 501 when Stripe is not configured', async () => {
+    if (process.env['STRIPE_SECRET_KEY']) return;
+
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/billing/portal-session')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(501);
+    expect(res.body.error).toMatch(/billing is not configured/i);
+  });
+});
+
+// ─── requireActiveSubscription middleware ────────────────────────────────────
+describe('requireActiveSubscription middleware', () => {
+  /**
+   * Build a dedicated mini-app that places requireActiveSubscription in front of
+   * a test route. We import the middleware and wire it up manually to avoid
+   * interference from the full buildApp() route table.
+   */
+  async function buildSubTestApp() {
+    const express = await import('express');
+    const { protect } = await import('../../middleware/auth.js');
+    const { requireActiveSubscription } = await import('../../routes/billing.js');
+    const { router: authRouter } = await import('../../routes/auth.js');
+
+    const testApp = express.default();
+    testApp.use(express.default.json());
+    // Auth routes so we can register/login
+    testApp.use('/api/auth', authRouter);
+    // Test route behind protect + requireActiveSubscription
+    testApp.get('/api/sub-test', protect, requireActiveSubscription, (_req: any, res: any) => {
+      res.json({ ok: true });
+    });
+    return testApp;
+  }
+
+  it('returns 402 when no active subscription exists', async () => {
+    const testApp = await buildSubTestApp();
+    const { authHeader, orgHeader, orgId } = await seedAuth(testApp);
+
+    // Registration auto-creates a trialing subscription — delete it
+    await db.subscription.deleteMany({ where: { organizationId: orgId } });
+
+    const res = await request(testApp)
+      .get('/api/sub-test')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(402);
+    expect(res.body.error).toBe('subscription_required');
+  });
+
+  it('returns 200 when an active subscription exists', async () => {
+    const testApp = await buildSubTestApp();
+    const { authHeader, orgHeader, orgId } = await seedAuth(testApp);
+
+    // Create an active subscription
+    await db.subscription.create({
+      data: {
+        organizationId: orgId,
+        tier: 'STARTER',
+        status: 'active',
+        stripeSubscriptionId: `sub_test_${Date.now()}`,
+        stripeCustomerId: 'cus_test',
+      },
+    });
+
+    const res = await request(testApp)
+      .get('/api/sub-test')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 200 when a trialing subscription exists', async () => {
+    const testApp = await buildSubTestApp();
+    const { authHeader, orgHeader, orgId } = await seedAuth(testApp);
+
+    await db.subscription.create({
+      data: {
+        organizationId: orgId,
+        tier: 'PROFESSIONAL',
+        status: 'trialing',
+        stripeSubscriptionId: `sub_trial_${Date.now()}`,
+        stripeCustomerId: 'cus_trial_test',
+      },
+    });
+
+    const res = await request(testApp)
+      .get('/api/sub-test')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});

@@ -392,3 +392,207 @@ describe('GET /api/share/:token (matter & document)', () => {
     expect(res.body.resource.id).toBe(doc.id);
   });
 });
+
+// ─── GET /api/share-links (pagination) ──────────────────────────────────────
+describe('GET /api/share-links (pagination)', () => {
+  it('respects limit and offset query parameters', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    // Create 5 links
+    for (let i = 0; i < 5; i++) {
+      await request(app)
+        .post('/api/share-links')
+        .set('Authorization', authHeader)
+        .set('X-Organization-Id', orgHeader)
+        .send({ resourceType: 'contract', resourceId: contract.id, role: 'viewer' });
+    }
+
+    // Page 1: limit 2, offset 0
+    const page1 = await request(app)
+      .get('/api/share-links?limit=2&offset=0')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page1.status).toBe(200);
+    expect(page1.body.data).toHaveLength(2);
+    expect(page1.body.total).toBe(5);
+    expect(page1.body.limit).toBe(2);
+    expect(page1.body.offset).toBe(0);
+
+    // Page 2: limit 2, offset 2
+    const page2 = await request(app)
+      .get('/api/share-links?limit=2&offset=2')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page2.status).toBe(200);
+    expect(page2.body.data).toHaveLength(2);
+    expect(page2.body.offset).toBe(2);
+
+    // Page 3: limit 2, offset 4
+    const page3 = await request(app)
+      .get('/api/share-links?limit=2&offset=4')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page3.status).toBe(200);
+    expect(page3.body.data).toHaveLength(1);
+  });
+
+  it('caps limit at 100', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/share-links?limit=200')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(100);
+  });
+});
+
+// ─── POST /api/share-links — expired link access ───────────────────────────
+describe('GET /api/share/:token (expired link access)', () => {
+  it('returns 410 when expiresAt is in the past', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const pastDate = new Date(Date.now() - 60_000).toISOString();
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'viewer', expiresAt: pastDate });
+
+    expect(createRes.status).toBe(201);
+
+    const res = await request(app).get(`/api/share/${createRes.body.token}`);
+    expect(res.status).toBe(410);
+    expect(res.body.error).toMatch(/expired/i);
+  });
+});
+
+// ─── DELETE /api/share-links — cross-org isolation ──────────────────────────
+describe('DELETE /api/share-links/:id (cross-org)', () => {
+  it('returns 404 when deleting a share link from a different org', async () => {
+    const app = buildApp();
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const contract = await seedContract(a.orgId, a.userId);
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'viewer' });
+
+    expect(createRes.status).toBe(201);
+
+    const res = await request(app)
+      .delete(`/api/share-links/${createRes.body.id}`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+
+    // Verify link still exists
+    const dbLink = await db.shareLink.findUnique({ where: { id: createRes.body.id } });
+    expect(dbLink).not.toBeNull();
+  });
+});
+
+// ─── GET /api/share/:token — after resource deletion ────────────────────────
+describe('GET /api/share/:token (after resource deletion)', () => {
+  it('returns 404 when the underlying resource has been deleted', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const matter = await db.matter.create({
+      data: { title: 'Will Delete', organizationId: orgId, ownerId: userId },
+    });
+
+    // Create share link for the matter
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'matter', resourceId: matter.id, role: 'viewer' });
+
+    expect(createRes.status).toBe(201);
+    const { token } = createRes.body;
+
+    // Verify it works first
+    const before = await request(app).get(`/api/share/${token}`);
+    expect(before.status).toBe(200);
+
+    // Soft-delete the matter
+    await request(app)
+      .delete(`/api/matters/${matter.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // Now the token should return 404 because the resource no longer exists (soft-deleted)
+    const after = await request(app).get(`/api/share/${token}`);
+    expect(after.status).toBe(404);
+    expect(after.body.error).toMatch(/no longer exists/i);
+  });
+
+  it('returns 404 after the share link itself is deleted', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'viewer' });
+
+    const { token, id: linkId } = createRes.body;
+
+    // Delete the share link
+    await request(app)
+      .delete(`/api/share-links/${linkId}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // Now the token endpoint should return 404
+    const res = await request(app).get(`/api/share/${token}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── GET /api/share-links — filters by resourceId ──────────────────────────
+describe('GET /api/share-links (filter by resourceId)', () => {
+  it('filters by resourceId query parameter', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract1 = await seedContract(orgId, userId);
+    const contract2 = await seedContract(orgId, userId);
+
+    await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract1.id, role: 'viewer' });
+
+    await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract2.id, role: 'viewer' });
+
+    const res = await request(app)
+      .get(`/api/share-links?resourceId=${contract1.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].resourceId).toBe(contract1.id);
+  });
+});

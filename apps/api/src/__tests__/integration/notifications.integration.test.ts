@@ -283,3 +283,67 @@ describe('PATCH /api/notifications/read-all (all already read)', () => {
     expect(resB.body.unreadCount).toBe(1);
   });
 });
+
+// ─── Error / guard paths ─────────────────────────────────────────────────────
+describe('Notifications error/guard paths', () => {
+  it('GET supports pagination with limit and offset', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+
+    // Seed 5 notifications
+    for (let i = 0; i < 5; i++) {
+      await seedNotification(userId, orgId, `Paginated ${i}`);
+    }
+
+    const page1 = await request(app)
+      .get('/api/notifications?limit=2&offset=0')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page1.status).toBe(200);
+    expect(page1.body.data).toHaveLength(2);
+    expect(page1.body.total).toBe(5);
+    expect(page1.body.limit).toBe(2);
+    expect(page1.body.offset).toBe(0);
+
+    const page2 = await request(app)
+      .get('/api/notifications?limit=2&offset=2')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page2.status).toBe(200);
+    expect(page2.body.data).toHaveLength(2);
+    expect(page2.body.offset).toBe(2);
+
+    // No overlap between pages
+    const ids1 = page1.body.data.map((d: { id: string }) => d.id);
+    const ids2 = page2.body.data.map((d: { id: string }) => d.id);
+    expect(ids1.filter((id: string) => ids2.includes(id))).toHaveLength(0);
+  });
+
+  it('PATCH /api/notifications/read-all returns 401 without auth', async () => {
+    const res = await request(app).patch('/api/notifications/read-all');
+    expect(res.status).toBe(401);
+  });
+
+  it('PATCH /api/notifications/:id/read returns 401 without auth', async () => {
+    const res = await request(app).patch('/api/notifications/some-id/read');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET returns correct total and data length', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+
+    await seedNotification(userId, orgId, 'N1');
+    await seedNotification(userId, orgId, 'N2');
+    await seedNotification(userId, orgId, 'N3');
+
+    const res = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(3);
+    expect(res.body.total).toBe(3);
+  });
+});

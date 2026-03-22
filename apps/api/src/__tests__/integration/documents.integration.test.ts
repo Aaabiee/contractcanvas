@@ -483,3 +483,242 @@ describe('POST /api/documents/upload (re-upload after delete)', () => {
     expect(list.body[0].id).toBe(upload2.body.id);
   });
 });
+
+// ─── Additional coverage: cross-org isolation for GET/:id and DELETE ─────────
+describe('GET /api/documents/:id (cross-org)', () => {
+  it('returns 404 when fetching a document belonging to a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+
+    const upload = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 cross-org test'), { filename: 'secret.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(upload.status).toBe(201);
+
+    const res = await request(app)
+      .get(`/api/documents/${upload.body.id}`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/documents/:id (cross-org)', () => {
+  it('returns 404 when deleting a document belonging to a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+
+    const upload = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 cross-org del'), { filename: 'cross-del.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(upload.status).toBe(201);
+
+    const res = await request(app)
+      .delete(`/api/documents/${upload.body.id}`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+
+    // Verify document still exists for the owning org
+    const dbRecord = await db.document.findUnique({ where: { id: upload.body.id } });
+    expect(dbRecord!.deletedAt).toBeNull();
+  });
+});
+
+// ─── Additional coverage: upload with invalid metadata ──────────────────────
+describe('POST /api/documents/upload (metadata validation)', () => {
+  it('returns 400 when matterId is missing from body', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'test.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/[Ii]nvalid metadata/);
+  });
+
+  it('returns 400 when matterId is not a valid cuid', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'test.pdf', contentType: 'application/pdf' })
+      .field('matterId', 'not-a-cuid');
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when kind is an invalid value', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'test.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId)
+      .field('kind', 'INVALID_KIND');
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── Additional coverage: upload with kind ATTACHMENT and GENERATED ─────────
+describe('POST /api/documents/upload (kind variations)', () => {
+  it('uploads with kind ATTACHMENT and stores it correctly', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 attachment'), { filename: 'attachment.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId)
+      .field('kind', 'ATTACHMENT');
+
+    expect(res.status).toBe(201);
+    expect(res.body.kind).toBe('ATTACHMENT');
+
+    const dbRecord = await db.document.findUnique({ where: { id: res.body.id } });
+    expect(dbRecord!.kind).toBe('ATTACHMENT');
+  });
+
+  it('uploads with kind GENERATED and stores it correctly', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 generated'), { filename: 'generated.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId)
+      .field('kind', 'GENERATED');
+
+    expect(res.status).toBe(201);
+    expect(res.body.kind).toBe('GENERATED');
+  });
+
+  it('defaults kind to UPLOADED when not provided', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 default kind'), { filename: 'default.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(res.status).toBe(201);
+    expect(res.body.kind).toBe('UPLOADED');
+  });
+});
+
+// ─── Additional coverage: re-upload and list verification ───────────────────
+describe('POST /api/documents/upload (re-upload and list verification)', () => {
+  it('re-uploading multiple files to same matter lists all of them', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const upload1 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 first'), { filename: 'first.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    const upload2 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 second'), { filename: 'second.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    const upload3 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('plain text'), { filename: 'notes.txt', contentType: 'text/plain' })
+      .field('matterId', matterId);
+
+    expect(upload1.status).toBe(201);
+    expect(upload2.status).toBe(201);
+    expect(upload3.status).toBe(201);
+
+    const list = await request(app)
+      .get(`/api/documents?matterId=${matterId}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(3);
+
+    const filenames = list.body.map((d: { filename: string }) => d.filename);
+    expect(filenames).toContain('first.pdf');
+    expect(filenames).toContain('second.pdf');
+    expect(filenames).toContain('notes.txt');
+  });
+});
+
+// ─── Additional coverage: download cross-org returns 404 ────────────────────
+describe('GET /api/documents/:id/download (cross-org)', () => {
+  it('returns 404 when downloading a document from another org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+
+    const upload = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 dl-cross-org'), { filename: 'dl-cross.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(upload.status).toBe(201);
+
+    const res = await request(app)
+      .get(`/api/documents/${upload.body.id}/download`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── Additional coverage: error propagation (S3 send failure) ───────────────
+describe('POST /api/documents/upload (S3 error propagation)', () => {
+  it('propagates error when S3 upload fails', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    // Make S3 send reject for this test
+    mockS3Send.mockRejectedValueOnce(new Error('S3 upload failed'));
+
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 s3 error'), { filename: 'fail.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    // Error should be caught and propagated through next(error)
+    expect(res.status).toBe(500);
+  });
+});

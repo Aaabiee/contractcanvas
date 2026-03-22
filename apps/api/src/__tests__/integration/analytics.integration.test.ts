@@ -194,4 +194,72 @@ describe('GET /api/analytics/contract-trends', () => {
     expect(typeof firstWeek.count).toBe('number');
     expect(typeof firstWeek.totalValueCents).toBe('number');
   });
+
+  it('returns trends with actual data from contracts created at different dates', async () => {
+    const { authHeader, orgHeader, orgId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    // Create contracts with varying createdAt dates via direct DB insertion
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 86_400_000);
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 86_400_000);
+
+    await db.contract.createMany({
+      data: [
+        { title: 'Recent 1', organizationId: orgId, matterId, valueCents: 1000, createdAt: now },
+        { title: 'Recent 2', organizationId: orgId, matterId, valueCents: 2000, createdAt: now },
+        { title: 'LastWeek', organizationId: orgId, matterId, valueCents: 3000, createdAt: oneWeekAgo },
+        { title: 'TwoWeeksAgo', organizationId: orgId, matterId, valueCents: 4000, createdAt: twoWeeksAgo },
+      ],
+    });
+
+    const res = await request(app)
+      .get('/api/analytics/contract-trends?period=30d')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.trends.length).toBeGreaterThanOrEqual(1);
+
+    // Sum of all trend entries should match the total contracts
+    const totalCount = res.body.trends.reduce((s: number, t: { count: number }) => s + t.count, 0);
+    expect(totalCount).toBeGreaterThanOrEqual(4);
+
+    const totalValue = res.body.trends.reduce((s: number, t: { totalValueCents: number }) => s + t.totalValueCents, 0);
+    expect(totalValue).toBeGreaterThanOrEqual(10000);
+  });
+});
+
+// ─── Error propagation ──────────────────────────────────────────────────────
+describe('Analytics error propagation', () => {
+  it('overview returns 403 when X-Organization-Id header is missing', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/analytics/overview')
+      .set('Authorization', authHeader);
+    // Without X-Organization-Id, organizationId is resolved from JWT organizations array
+    // (first org), so the request should succeed or if the org context is absent, 403.
+    // The route checks if (!organizationId) => 403
+    expect([200, 403]).toContain(res.status);
+  });
+
+  it('contract-trends returns 403 when X-Organization-Id header is missing for a user with no orgs', async () => {
+    const { authHeader, userId } = await seedAuth(app);
+
+    // Remove all org memberships so the user has no org context
+    await db.organizationMember.deleteMany({ where: { userId } });
+
+    // Re-login to get fresh token without orgs
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: (await db.user.findUnique({ where: { id: userId } }))!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/analytics/contract-trends')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
 });

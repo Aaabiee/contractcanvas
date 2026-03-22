@@ -27,4 +27,54 @@ describe('GET /health', () => {
     const res = await request(app).get('/health');
     expect(typeof res.body.env).toBe('string');
   });
+
+  it('reports s3 check status', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/health');
+
+    // The checks object should have an s3 key regardless of whether MinIO is running
+    expect(res.body.checks).toHaveProperty('s3');
+    expect(['ok', 'error']).toContain(res.body.checks.s3);
+  });
+
+  it('reports redis check status when redis is available', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/health');
+
+    // Redis check is only included if getRedisClient() returns a client.
+    // If redis is running, it should appear. If not, it may be absent.
+    if (res.body.checks.redis !== undefined) {
+      expect(['ok', 'error']).toContain(res.body.checks.redis);
+    }
+  });
+
+  it('returns all checks in a single response', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/health');
+
+    expect(res.status).toBeLessThanOrEqual(503);
+    expect(res.body).toHaveProperty('ok');
+    expect(typeof res.body.ok).toBe('boolean');
+    expect(res.body).toHaveProperty('checks');
+    expect(typeof res.body.checks).toBe('object');
+    // db should always be present
+    expect(res.body.checks).toHaveProperty('db');
+  });
+
+  it('returns 503 when any check fails', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/health');
+
+    if (res.body.ok === false) {
+      expect(res.status).toBe(503);
+      // At least one check should be 'error'
+      const checks = Object.values(res.body.checks);
+      expect(checks).toContain('error');
+    } else {
+      // All checks pass
+      expect(res.status).toBe(200);
+      const checks = Object.values(res.body.checks);
+      expect(checks.every((c) => c === 'ok')).toBe(true);
+    }
+  });
 });

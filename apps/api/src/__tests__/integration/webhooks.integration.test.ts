@@ -412,3 +412,254 @@ describe('GET /api/organizations/:orgId/webhooks/:webhookId/deliveries', () => {
     expect(delivery.attempts).toBe(1);
   });
 });
+
+// ─── PATCH — combined URL and events change ─────────────────────────────────
+describe('PATCH /api/organizations/:orgId/webhooks/:webhookId (combined changes)', () => {
+  it('updates URL and events in a single PATCH request', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        url:    'https://updated-hook.example.com/v2',
+        events: ['document.uploaded', 'signature.completed'],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('https://updated-hook.example.com/v2');
+    expect(res.body.events).toEqual(['document.uploaded', 'signature.completed']);
+  });
+
+  it('updates URL, events, and isActive simultaneously', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        url:      'https://all-in-one.example.com/hook',
+        events:   ['task.completed'],
+        isActive: false,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('https://all-in-one.example.com/hook');
+    expect(res.body.events).toEqual(['task.completed']);
+    expect(res.body.isActive).toBe(false);
+  });
+});
+
+// ─── PATCH — toggle isActive ────────────────────────────────────────────────
+describe('PATCH /api/organizations/:orgId/webhooks/:webhookId (toggle isActive)', () => {
+  it('deactivates and reactivates a webhook', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+    expect(createRes.body.isActive).toBe(true);
+
+    // Deactivate
+    const deactivate = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ isActive: false });
+
+    expect(deactivate.status).toBe(200);
+    expect(deactivate.body.isActive).toBe(false);
+
+    // Reactivate
+    const reactivate = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ isActive: true });
+
+    expect(reactivate.status).toBe(200);
+    expect(reactivate.body.isActive).toBe(true);
+
+    // Verify in DB
+    const dbHook = await db.outboundWebhook.findUnique({ where: { id: webhookId } });
+    expect(dbHook!.isActive).toBe(true);
+  });
+});
+
+// ─── PATCH — invalid events on update ───────────────────────────────────────
+describe('PATCH /api/organizations/:orgId/webhooks/:webhookId (invalid events)', () => {
+  it('returns 400 for invalid event names on update', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ events: ['not.a.valid.event'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/[Ii]nvalid events/);
+    expect(res.body.details.invalidEvents).toContain('not.a.valid.event');
+  });
+
+  it('returns 400 for invalid body schema on update', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .patch(hookUrl(orgHeader, webhookId))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ url: 'not-a-valid-url' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── PATCH — cross-org isolation ────────────────────────────────────────────
+describe('PATCH /api/organizations/:orgId/webhooks/:webhookId (cross-org)', () => {
+  it('returns 403 when patching a webhook from a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(a.orgHeader))
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .patch(hookUrl(a.orgHeader, webhookId))
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader)
+      .send({ isActive: false });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── Deliveries — cross-org isolation ───────────────────────────────────────
+describe('GET /api/organizations/:orgId/webhooks/:webhookId/deliveries (cross-org)', () => {
+  it('returns 403 when requesting deliveries from a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(a.orgHeader))
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    const res = await request(app)
+      .get(hookUrl(a.orgHeader, webhookId) + '/deliveries')
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── Deliveries — with seeded data and pagination ───────────────────────────
+describe('GET /api/organizations/:orgId/webhooks/:webhookId/deliveries (seeded data)', () => {
+  it('returns deliveries with correct fields', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const createRes = await request(app)
+      .post(hookUrl(orgHeader))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send(VALID_WEBHOOK);
+
+    const webhookId = createRes.body.id;
+
+    await db.outboundWebhookDelivery.createMany({
+      data: [
+        { webhookId, event: 'contract.created', payload: { contractId: 'c1' }, statusCode: 200, success: true,  attempts: 1 },
+        { webhookId, event: 'matter.updated',   payload: { matterId: 'm1' },   statusCode: 500, success: false, attempts: 3 },
+        { webhookId, event: 'document.uploaded', payload: { docId: 'd1' },      statusCode: 200, success: true,  attempts: 1 },
+      ],
+    });
+
+    const res = await request(app)
+      .get(hookUrl(orgHeader, webhookId) + '/deliveries')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(3);
+
+    // Verify each delivery has expected fields
+    for (const delivery of res.body.data) {
+      expect(delivery).toHaveProperty('id');
+      expect(delivery).toHaveProperty('event');
+      expect(delivery).toHaveProperty('statusCode');
+      expect(delivery).toHaveProperty('success');
+      expect(delivery).toHaveProperty('attempts');
+      expect(delivery).toHaveProperty('createdAt');
+    }
+
+    // Verify failed delivery
+    const failed = res.body.data.find((d: { event: string }) => d.event === 'matter.updated');
+    expect(failed).toBeDefined();
+    expect(failed.statusCode).toBe(500);
+    expect(failed.success).toBe(false);
+    expect(failed.attempts).toBe(3);
+  });
+});
+
+// ─── POST — creating webhook for a different org returns 403 ────────────────
+describe('POST /api/organizations/:orgId/webhooks (cross-org)', () => {
+  it('returns 403 when creating a webhook for a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+
+    const res = await request(app)
+      .post(hookUrl(b.orgHeader))
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send(VALID_WEBHOOK);
+
+    expect(res.status).toBe(403);
+  });
+});

@@ -529,3 +529,218 @@ describe('POST /api/contracts/:id/generate-pdf', () => {
     expect([200, 402, 503]).toContain(res.status);
   });
 });
+
+// ─── POST /api/contracts — valueCents and currency ──────────────────────────
+describe('POST /api/contracts — valueCents and currency', () => {
+  it('creates a contract with valueCents and currency', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const res = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Currency Contract', matterId, valueCents: 100000, currency: 'EUR' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.valueCents).toBe(100000);
+    expect(res.body.currency).toBe('EUR');
+  });
+
+  it('creates a contract without valueCents (defaults to null)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const res = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'No Value', matterId });
+
+    expect(res.status).toBe(201);
+    expect(res.body.valueCents).toBeNull();
+  });
+
+  it('returns 400 for an invalid currency code', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const res = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Bad Currency', matterId, currency: 'invalid' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── PATCH /api/contracts/:id — valueCents nullable ─────────────────────────
+describe('PATCH /api/contracts/:id — valueCents update', () => {
+  it('updates valueCents to a new value', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Value Update', matterId, valueCents: 50000 });
+
+    const res = await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ valueCents: 75000 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valueCents).toBe(75000);
+  });
+
+  it('sets valueCents to null', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Clear Value', matterId, valueCents: 50000 });
+
+    const res = await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ valueCents: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valueCents).toBeNull();
+  });
+
+  it('returns 404 for patching a non-existent contract', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/contracts/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Ghost' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── DELETE /api/contracts/:id — 404 for non-existent ───────────────────────
+describe('DELETE /api/contracts/:id — error cases', () => {
+  it('returns 404 for a non-existent contract', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .delete('/api/contracts/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when deleting an already-deleted contract', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Double Delete', matterId });
+
+    // First delete succeeds
+    await request(app)
+      .delete(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // Second delete should return 404
+    const res = await request(app)
+      .delete(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── POST /api/contracts/:contractId/versions — with sizeBytes ──────────────
+describe('POST /api/contracts/:contractId/versions — sizeBytes', () => {
+  it('creates a version with sizeBytes persisted', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const contract = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'SizeBytes Contract', matterId });
+
+    const res = await request(app)
+      .post(`/api/contracts/${contract.body.id}/versions`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ storageKey: 'orgs/o1/v1.pdf', mimeType: 'application/pdf', sizeBytes: 102400 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.sizeBytes).toBe(102400);
+  });
+
+  it('returns 404 for version on a non-existent contract', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/contracts/cuid1234567890abcdefghijk/versions')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ storageKey: 'k1' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── GET /api/contracts/:contractId/versions — 404 for unknown contract ─────
+describe('GET /api/contracts/:contractId/versions — error cases', () => {
+  it('returns 404 for versions of a non-existent contract', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/contracts/cuid1234567890abcdefghijk/versions')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── Org guard — 403 when X-Organization-Id does not match user membership ──
+describe('Contracts — invalid X-Organization-Id header', () => {
+  it('GET /api/contracts returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .get('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/organization/i);
+  });
+
+  it('POST /api/contracts returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({ title: 'No Org', matterId: 'cuid1234567890abcdefghijk' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /api/contracts/:id returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+    const res = await request(app)
+      .delete('/api/contracts/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+});

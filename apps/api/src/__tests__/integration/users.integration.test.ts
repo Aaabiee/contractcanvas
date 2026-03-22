@@ -276,3 +276,149 @@ describe('DELETE /api/users/me', () => {
     expect(auditLog).not.toBeNull();
   });
 });
+
+// ─── PATCH /api/users/me — validation errors ────────────────────────────────
+describe('PATCH /api/users/me (validation errors)', () => {
+  it('returns 400 when firstName is not a string', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', authHeader)
+      .send({ firstName: 12345 });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('details');
+  });
+
+  it('returns 400 when lastName is not a string', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', authHeader)
+      .send({ lastName: true });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid input/i);
+  });
+
+  it('returns 400 when avatarUrl is not a string', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', authHeader)
+      .send({ avatarUrl: 42 });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── POST /api/users/me/data-export — response shape verification ───────────
+describe('POST /api/users/me/data-export (response shape)', () => {
+  it('includes all expected fields in user object', async () => {
+    const { authHeader, orgHeader, userId, email } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/users/me/data-export')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+
+    // user object has all expected keys
+    expect(res.body.user).toHaveProperty('id', userId);
+    expect(res.body.user).toHaveProperty('email', email);
+    expect(res.body.user).toHaveProperty('firstName');
+    expect(res.body.user).toHaveProperty('lastName');
+    expect(res.body.user).toHaveProperty('role');
+    expect(res.body.user).toHaveProperty('emailVerifiedAt');
+    expect(res.body.user).toHaveProperty('tosAcceptedAt');
+    expect(res.body.user).toHaveProperty('createdAt');
+    expect(res.body.user).toHaveProperty('updatedAt');
+  });
+
+  it('memberships array includes organization name', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/users/me/data-export')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.memberships.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.memberships[0]).toHaveProperty('organization');
+    expect(res.body.memberships[0].organization).toHaveProperty('name');
+  });
+
+  it('includes matters, comments, notifications, and tasks arrays', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/users/me/data-export')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.matters)).toBe(true);
+    expect(Array.isArray(res.body.comments)).toBe(true);
+    expect(Array.isArray(res.body.notifications)).toBe(true);
+    expect(Array.isArray(res.body.tasks)).toBe(true);
+  });
+
+  it('sets Content-Disposition header with userId in filename', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/users/me/data-export')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain(userId);
+  });
+});
+
+// ─── PATCH /api/users/me/onboarding — validation errors ─────────────────────
+describe('PATCH /api/users/me/onboarding (validation errors)', () => {
+  it('returns 400 for numeric step value', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .patch('/api/users/me/onboarding')
+      .set('Authorization', authHeader)
+      .send({ step: 999 });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('details');
+  });
+
+  it('returns 400 for null step value', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .patch('/api/users/me/onboarding')
+      .set('Authorization', authHeader)
+      .send({ step: null });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts all valid onboarding step values', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const steps = ['VERIFY_EMAIL', 'CUSTOMIZE_ORG', 'CREATE_MATTER', 'INVITE_MEMBER', 'UPLOAD_DOCUMENT', 'DONE'];
+    for (const step of steps) {
+      const res = await request(app)
+        .patch('/api/users/me/onboarding')
+        .set('Authorization', authHeader)
+        .send({ step });
+
+      expect(res.status).toBe(200);
+      expect(res.body.onboardingStep).toBe(step);
+    }
+  });
+});

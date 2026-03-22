@@ -512,3 +512,221 @@ describe('POST /api/auth/reset-password', () => {
     expect(user!.resetTokenExp).toBeNull();
   });
 });
+
+// ─── Rate-limiting (login-guard) ────────────────────────────────────────────
+describe('POST /api/auth/login — rate limiting', () => {
+  beforeEach(async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+  });
+
+  it('returns 429 after 5 consecutive failed login attempts', async () => {
+    const app = buildApp();
+    const wrongCreds = { email: 'alice@example.com', password: 'WrongPass1!' };
+
+    // Make 5 failed attempts to trigger lockout
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app).post('/api/auth/login').send(wrongCreds);
+      expect(res.status).toBe(401);
+    }
+
+    // 6th attempt should be rate-limited
+    const res = await request(app).post('/api/auth/login').send(wrongCreds);
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe('account_locked');
+    expect(res.body.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it('returns 429 even with correct password after lockout', async () => {
+    const app = buildApp();
+    const wrongCreds = { email: 'alice@example.com', password: 'WrongPass1!' };
+    const correctCreds = { email: 'alice@example.com', password: 'Password1!' };
+
+    // Trigger lockout
+    for (let i = 0; i < 5; i++) {
+      await request(app).post('/api/auth/login').send(wrongCreds);
+    }
+
+    // Even correct password should be blocked
+    const res = await request(app).post('/api/auth/login').send(correctCreds);
+    expect(res.status).toBe(429);
+  });
+});
+
+// ─── POST /register — redirect mode ────────────────────────────────────────
+describe('POST /api/auth/register — redirect mode', () => {
+  it('returns 303 when ?redirect=1 is set', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/register?redirect=1')
+      .send(validPayload);
+
+    expect(res.status).toBe(303);
+    expect(res.body.redirectTo).toBe('/login');
+  });
+});
+
+// ─── GET /verify-email ──────────────────────────────────────────────────────
+describe('GET /api/auth/verify-email', () => {
+  it('returns 400 when token query param is missing', async () => {
+    const res = await request(buildApp())
+      .get('/api/auth/verify-email');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/missing/i);
+  });
+
+  it('returns 400 for invalid/expired verification token', async () => {
+    const res = await request(buildApp())
+      .get('/api/auth/verify-email?token=bogus-token-that-does-not-exist');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid or expired/i);
+  });
+
+  it('verifies email and returns a new access token', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    const crypto = await import('node:crypto');
+    const rawToken   = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const verifyTokenExp = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { verifyToken: hashedToken, verifyTokenExp, emailVerifiedAt: null },
+    });
+
+    const res = await request(buildApp())
+      .get(`/api/auth/verify-email?token=${rawToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.token).toBeTruthy();
+  });
+
+  it('returns 200 with message when email is already verified', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    const crypto = await import('node:crypto');
+    const rawToken   = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const verifyTokenExp = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { verifyToken: hashedToken, verifyTokenExp, emailVerifiedAt: new Date() },
+    });
+
+    const res = await request(buildApp())
+      .get(`/api/auth/verify-email?token=${rawToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/already verified/i);
+  });
+
+  it('returns 400 for an expired verification token', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    const crypto = await import('node:crypto');
+    const rawToken   = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { verifyToken: hashedToken, verifyTokenExp: new Date(Date.now() - 1000), emailVerifiedAt: null },
+    });
+
+    const res = await request(buildApp())
+      .get(`/api/auth/verify-email?token=${rawToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid or expired/i);
+  });
+});
+
+// ─── POST /resend-verification — throttle ───────────────────────────────────
+describe('POST /api/auth/resend-verification — rate throttle', () => {
+  it('returns 429 when requesting resend too soon (within 8 hours)', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    // The verifyTokenExp is set to 24h from now, so lastSent = verifyTokenExp - 24h = now.
+    // hoursSinceLast ≈ 0, which is < 8, so it should return 429.
+    const res = await request(buildApp())
+      .post('/api/auth/resend-verification')
+      .send({ email: validPayload.email });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error).toMatch(/wait/i);
+  });
+});
+
+// ─── POST /refresh-token ────────────────────────────────────────────────────
+describe('POST /api/auth/refresh-token', () => {
+  it('returns 401 when no refresh cookie is present', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/refresh-token');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/no refresh token/i);
+  });
+
+  it('returns 401 for an invalid/expired refresh token cookie', async () => {
+    // Note: the test buildApp() does not include cookie-parser, so
+    // req.cookies is undefined and the route returns "No refresh token".
+    // This still covers the 401 early-return path (line 380-382 of auth.ts).
+    const res = await request(buildApp())
+      .post('/api/auth/refresh-token')
+      .set('Cookie', 'cc_rt=invalid-token-value');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/refresh token/i);
+  });
+});
+
+// ─── POST /register — join mode ────────────────────────────────────────────
+describe('POST /api/auth/register — join mode', () => {
+  it('allows a new user to join an existing org', async () => {
+    // First create an org
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    const joinPayload = {
+      email: 'joiner@example.com',
+      password: 'Password1!',
+      confirmPassword: 'Password1!',
+      name: { firstName: 'Bob', lastName: 'Joiner' },
+      role: 'CLIENT',
+      orgMode: 'join',
+      organizationSlug: 'smith-associates',
+    };
+
+    const res = await request(buildApp())
+      .post('/api/auth/register')
+      .send(joinPayload);
+
+    expect(res.status).toBe(201);
+    expect(res.body.organization.slug).toBe('smith-associates');
+
+    // Verify membership was created with MEMBER role
+    const user = await db.user.findUnique({ where: { email: 'joiner@example.com' } });
+    const membership = await db.organizationMember.findFirst({
+      where: { userId: user!.id },
+    });
+    expect(membership!.role).toBe('MEMBER');
+  });
+
+  it('returns 404 when joining a non-existent org', async () => {
+    const joinPayload = {
+      email: 'joiner@example.com',
+      password: 'Password1!',
+      confirmPassword: 'Password1!',
+      name: { firstName: 'Bob', lastName: 'Joiner' },
+      role: 'CLIENT',
+      orgMode: 'join',
+      organizationSlug: 'non-existent-org',
+    };
+
+    const res = await request(buildApp())
+      .post('/api/auth/register')
+      .send(joinPayload);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/organization not found/i);
+  });
+});

@@ -631,3 +631,250 @@ describe('POST /api/signatures/:id/resend', () => {
     expect(res.status).toBe(409);
   });
 });
+
+// ─── Signatures — 403 with non-matching org header ──────────────────────────
+describe('Signatures — invalid X-Organization-Id header', () => {
+  it('GET /api/signatures/:id returns 403 with non-matching org header', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId   = await seedMatter(authHeader, orgHeader);
+    const contractId = await seedContract(authHeader, orgHeader, matterId);
+
+    const create = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        contractId,
+        provider:   'docusign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    // Request with a non-matching org header
+    const res = await request(app)
+      .get(`/api/signatures/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/organization/i);
+  });
+
+  it('POST /api/signatures returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({
+        contractId: 'cuid1234567890abcdefghijk',
+        provider:   'docusign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/signatures returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/signatures?contractId=some-id')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/signatures/:id/void returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/signatures/cuid1234567890abcdefghijk/void')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send({ reason: 'test' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/signatures/:id/resend returns 403 with non-matching org header', async () => {
+    const { authHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/signatures/cuid1234567890abcdefghijk/resend')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', 'cuid1234567890abcdefghijk')
+      .send();
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── POST /api/signatures/webhook/:provider — webhook handler ──────────────
+describe('POST /api/signatures/webhook/:provider', () => {
+  it('returns 400 for an unknown provider', async () => {
+    const res = await request(app)
+      .post('/api/signatures/webhook/unknown-provider')
+      .send({ event: 'completed' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/unknown provider/i);
+  });
+
+  it('returns 200 with ignored:true when payload has no providerId', async () => {
+    const res = await request(app)
+      .post('/api/signatures/webhook/docusign')
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(true);
+  });
+
+  it('returns 200 with ignored:true for unknown envelope providerId', async () => {
+    const res = await request(app)
+      .post('/api/signatures/webhook/docusign')
+      .send({
+        event: 'completed',
+        data: { envelopeId: 'non-existent-provider-id' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(true);
+  });
+
+  it('updates envelope status via docusign webhook', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId   = await seedMatter(authHeader, orgHeader);
+    const contractId = await seedContract(authHeader, orgHeader, matterId);
+
+    // Create an envelope
+    const create = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        contractId,
+        provider:   'docusign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    const envelope = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+
+    // Send webhook to update status to completed
+    const res = await request(app)
+      .post('/api/signatures/webhook/docusign')
+      .send({
+        event: 'completed',
+        data: { envelopeId: envelope!.providerId },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // Verify status updated in DB
+    const updated = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+    expect(updated!.status).toBe('COMPLETED');
+  });
+
+  it('transitions contract to EXECUTED when envelope completes', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId   = await seedMatter(authHeader, orgHeader);
+    const contractId = await seedContract(authHeader, orgHeader, matterId);
+
+    const create = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        contractId,
+        provider:   'docusign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    const envelope = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+
+    // First transition contract to PENDING_SIGNATURE (valid for EXECUTED)
+    const h = { Authorization: authHeader, 'X-Organization-Id': orgHeader };
+    await request(app).patch(`/api/contracts/${contractId}`).set(h).send({ status: 'NEGOTIATION' });
+    await request(app).patch(`/api/contracts/${contractId}`).set(h).send({ status: 'PENDING_SIGNATURE' });
+
+    // Send completed webhook
+    await request(app)
+      .post('/api/signatures/webhook/docusign')
+      .send({
+        event: 'completed',
+        data: { envelopeId: envelope!.providerId },
+      });
+
+    // Contract should be EXECUTED
+    const contract = await db.contract.findUnique({ where: { id: contractId } });
+    expect(contract!.status).toBe('EXECUTED');
+  });
+
+  it('updates envelope status via hellosign webhook', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId   = await seedMatter(authHeader, orgHeader);
+    const contractId = await seedContract(authHeader, orgHeader, matterId);
+
+    const create = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        contractId,
+        provider:   'hellosign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    const envelope = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+
+    const res = await request(app)
+      .post('/api/signatures/webhook/hellosign')
+      .send({
+        event: { event_type: 'signature_request_signed' },
+        signature_request: {
+          signature_request_id: envelope!.providerId,
+          signatures: [
+            { signer_email_address: 'signer@example.com', status_code: 'signed', signed_at: new Date().toISOString() },
+          ],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const updated = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+    expect(updated!.status).toBe('SIGNED');
+  });
+
+  it('handles hellosign webhook without signatures array', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId   = await seedMatter(authHeader, orgHeader);
+    const contractId = await seedContract(authHeader, orgHeader, matterId);
+
+    const create = await request(app)
+      .post('/api/signatures')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({
+        contractId,
+        provider:   'hellosign',
+        recipients: [{ email: 'signer@example.com', name: 'Signer', role: 'signer' }],
+      });
+
+    const envelope = await db.signatureEnvelope.findUnique({ where: { id: create.body.id } });
+
+    const res = await request(app)
+      .post('/api/signatures/webhook/hellosign')
+      .send({
+        event: { event_type: 'signature_request_sent' },
+        signature_request: {
+          signature_request_id: envelope!.providerId,
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});

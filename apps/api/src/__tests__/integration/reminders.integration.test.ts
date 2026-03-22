@@ -357,3 +357,163 @@ describe('PATCH /api/reminders/:id (sentAt reset and validation)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── Error / validation / guard paths ────────────────────────────────────────
+describe('Reminders — error and validation paths', () => {
+  it('GET returns 403 when no org context', async () => {
+    const app = buildApp();
+    const { authHeader, userId } = await seedAuth(app);
+
+    // Remove org memberships
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/reminders')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST returns 403 when no org context', async () => {
+    const app = buildApp();
+    const { authHeader, userId } = await seedAuth(app);
+
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .post('/api/reminders')
+      .set('Authorization', freshHeader)
+      .send({ contractId: 'clxxxxxxxxxxxxxxxxx', type: 'DEADLINE', dueAt: new Date().toISOString() });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH returns 403 when no org context', async () => {
+    const app = buildApp();
+    const { authHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const reminder = await db.reminder.create({
+      data: {
+        organizationId: orgId,
+        contractId: contract.id,
+        type: 'DEADLINE',
+        dueAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    // Remove org memberships
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .patch(`/api/reminders/${reminder.id}`)
+      .set('Authorization', freshHeader)
+      .send({ type: 'PAYMENT' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE returns 403 when no org context', async () => {
+    const app = buildApp();
+    const { authHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const reminder = await db.reminder.create({
+      data: {
+        organizationId: orgId,
+        contractId: contract.id,
+        type: 'PAYMENT',
+        dueAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .delete(`/api/reminders/${reminder.id}`)
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH returns 404 for non-existent reminder id', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .patch('/api/reminders/clxxxxxxxxxxxxxxxxxxxxxxxxx')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ type: 'RENEWAL' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE returns 404 for non-existent reminder id', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .delete('/api/reminders/clxxxxxxxxxxxxxxxxxxxxxxxxx')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('POST returns 400 when body is completely empty', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/reminders')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  it('GET supports filtering by contractId', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const c1 = await seedContract(orgId, userId);
+    const c2 = await seedContract(orgId, userId);
+
+    await db.reminder.createMany({
+      data: [
+        { organizationId: orgId, contractId: c1.id, type: 'DEADLINE', dueAt: new Date(Date.now() + 86_400_000) },
+        { organizationId: orgId, contractId: c2.id, type: 'RENEWAL', dueAt: new Date(Date.now() + 86_400_000) },
+      ],
+    });
+
+    const res = await request(app)
+      .get(`/api/reminders?contractId=${c1.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].contractId).toBe(c1.id);
+  });
+});

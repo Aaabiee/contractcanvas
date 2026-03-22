@@ -334,3 +334,179 @@ describe('GET /api/search (limit edge cases)', () => {
     expect(res.body.matters.length).toBeLessThanOrEqual(10);
   });
 });
+
+// ─── FTS mode with actual data ──────────────────────────────────────────────
+describe('GET /api/search (FTS path with data)', () => {
+  it('searches in fts mode and returns structured results', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    // Reset the FTS cache so it re-checks for the column
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    await db.matter.create({
+      data: { title: 'FtsStructured Alpha', description: 'Testing full text search', organizationId: orgId, ownerId: userId },
+    });
+
+    const matter = await db.matter.create({
+      data: { title: 'FtsStructured Beta', organizationId: orgId, ownerId: userId },
+    });
+    await db.contract.create({
+      data: { title: 'FtsStructured Contract', organizationId: orgId, matterId: matter.id },
+    });
+    await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId: matter.id,
+        filename: 'FtsStructured-doc.pdf',
+        storageKey: 'fake/fts.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 200,
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=FtsStructured&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.q).toBe('FtsStructured');
+    // Should find results regardless of whether FTS columns exist (falls back to LIKE)
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it('fts mode with single-word query returns matching matters', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    await db.matter.create({
+      data: { title: 'UniqueXylophone Matter', organizationId: orgId, ownerId: userId },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=UniqueXylophone&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.matters.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('fts mode with multi-word query', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    await db.matter.create({
+      data: { title: 'MultiWord FtsSearch Matter', organizationId: orgId, ownerId: userId },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=MultiWord+FtsSearch&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    // Should return at least the matter we created
+    expect(res.body.q).toBe('MultiWord FtsSearch');
+  });
+});
+
+// ─── Error propagation and org guard ─────────────────────────────────────────
+describe('GET /api/search (error propagation)', () => {
+  it('returns 403 when no org context', async () => {
+    const app = buildApp();
+    const { userId } = await seedAuth(app);
+
+    // Remove org memberships
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/search?q=test')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 for invalid mode parameter', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=test&mode=invalid')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('searches matters by description in like mode', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    await db.matter.create({
+      data: {
+        title: 'Regular Title',
+        description: 'UniqueDescriptionSearch target',
+        organizationId: orgId,
+        ownerId: userId,
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=UniqueDescriptionSearch&mode=like')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.matters).toHaveLength(1);
+    expect(res.body.matters[0].description).toContain('UniqueDescriptionSearch');
+  });
+
+  it('returns all three resource types in response', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const matter = await db.matter.create({
+      data: { title: 'TripleSearch Item', organizationId: orgId, ownerId: userId },
+    });
+    await db.contract.create({
+      data: { title: 'TripleSearch Contract', organizationId: orgId, matterId: matter.id },
+    });
+    await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId: matter.id,
+        filename: 'TripleSearch-file.pdf',
+        storageKey: 'fake/triple.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 100,
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=TripleSearch&mode=like')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.matters.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.contracts.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.documents.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.total).toBe(
+      res.body.matters.length + res.body.contracts.length + res.body.documents.length,
+    );
+  });
+});

@@ -255,4 +255,160 @@ describe('GET /api/organizations/:orgId/audit-logs/export.csv', () => {
     expect(lines.length).toBeGreaterThanOrEqual(1);
     expect(lines[0]).toContain('"id"');
   });
+
+  it('returns CSV rows with actual data values', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    await db.auditLog.create({
+      data: {
+        organizationId: orgHeader,
+        actorId: userId,
+        entity: 'Contract',
+        entityId: 'csv-test-entity',
+        action: 'CREATE',
+        ip: '10.0.0.1',
+        userAgent: 'csv-test-agent',
+      },
+    });
+
+    const res = await request(app)
+      .get(logsUrl(orgHeader, '/export.csv'))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    const lines = res.text.split('\r\n').filter(Boolean);
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+    // Data row should contain our entity and action
+    const dataLine = lines.find((l: string) => l.includes('csv-test-entity'));
+    expect(dataLine).toBeDefined();
+    expect(dataLine).toContain('"CREATE"');
+    expect(dataLine).toContain('"10.0.0.1"');
+  });
+});
+
+// ─── Filter by date range ───────────────────────────────────────────────────
+describe('GET /api/organizations/:orgId/audit-logs (date range filters)', () => {
+  it('filters by from param', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+
+    const old = new Date(Date.now() - 7 * 86_400_000);
+    const recent = new Date();
+
+    await db.auditLog.createMany({
+      data: [
+        { organizationId: orgHeader, actorId: userId, entity: 'Matter', entityId: 'old-1', action: 'CREATE', createdAt: old },
+        { organizationId: orgHeader, actorId: userId, entity: 'Matter', entityId: 'new-1', action: 'CREATE', createdAt: recent },
+      ],
+    });
+
+    // Filter from 2 days ago — should exclude the week-old entry
+    const fromDate = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const res = await request(app)
+      .get(logsUrl(orgHeader, `?from=${fromDate}`))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    const matterLogs = res.body.data.filter((d: { entity: string }) => d.entity === 'Matter');
+    expect(matterLogs.every((d: { entityId: string }) => d.entityId !== 'old-1')).toBe(true);
+  });
+
+  it('filters by to param', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+
+    const old = new Date(Date.now() - 7 * 86_400_000);
+    const recent = new Date();
+
+    await db.auditLog.createMany({
+      data: [
+        { organizationId: orgHeader, actorId: userId, entity: 'Contract', entityId: 'old-2', action: 'UPDATE', createdAt: old },
+        { organizationId: orgHeader, actorId: userId, entity: 'Contract', entityId: 'new-2', action: 'UPDATE', createdAt: recent },
+      ],
+    });
+
+    // Filter to 2 days ago — should exclude the recent entry
+    const toDate = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const res = await request(app)
+      .get(logsUrl(orgHeader, `?to=${toDate}`))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    const contractLogs = res.body.data.filter((d: { entity: string }) => d.entity === 'Contract');
+    expect(contractLogs.every((d: { entityId: string }) => d.entityId !== 'new-2')).toBe(true);
+  });
+
+  it('filters by combined from and to params', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+
+    const veryOld = new Date(Date.now() - 30 * 86_400_000);
+    const midRange = new Date(Date.now() - 5 * 86_400_000);
+    const recent = new Date();
+
+    await db.auditLog.createMany({
+      data: [
+        { organizationId: orgHeader, actorId: userId, entity: 'Document', entityId: 'very-old', action: 'CREATE', createdAt: veryOld },
+        { organizationId: orgHeader, actorId: userId, entity: 'Document', entityId: 'mid-range', action: 'CREATE', createdAt: midRange },
+        { organizationId: orgHeader, actorId: userId, entity: 'Document', entityId: 'recent', action: 'CREATE', createdAt: recent },
+      ],
+    });
+
+    const fromDate = new Date(Date.now() - 10 * 86_400_000).toISOString();
+    const toDate = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const res = await request(app)
+      .get(logsUrl(orgHeader, `?from=${fromDate}&to=${toDate}`))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    const docLogs = res.body.data.filter((d: { entity: string }) => d.entity === 'Document');
+    // Should only include mid-range
+    expect(docLogs.length).toBeGreaterThanOrEqual(1);
+    expect(docLogs.some((d: { entityId: string }) => d.entityId === 'mid-range')).toBe(true);
+    expect(docLogs.every((d: { entityId: string }) => d.entityId !== 'very-old')).toBe(true);
+    expect(docLogs.every((d: { entityId: string }) => d.entityId !== 'recent')).toBe(true);
+  });
+});
+
+// ─── Error propagation paths ────────────────────────────────────────────────
+describe('Audit logs error propagation', () => {
+  it('GET list returns 403 when no org context (missing organizationId)', async () => {
+    const { authHeader, userId } = await seedAuth(app);
+
+    // Remove org memberships to lose org context
+    await db.organizationMember.deleteMany({ where: { userId } });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: (await db.user.findUnique({ where: { id: userId } }))!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    // Use a placeholder orgId in the URL — the middleware will fail on orgRole check
+    const res = await request(app)
+      .get('/api/organizations/nonexistent-org/audit-logs')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('CSV export returns 403 for MEMBER role', async () => {
+    const { authHeader, orgHeader, userId, email } = await seedAuth(app);
+
+    await db.organizationMember.updateMany({
+      where: { userId, organizationId: orgHeader },
+      data:  { role: 'MEMBER' },
+    });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'Password1!' });
+    const memberHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get(logsUrl(orgHeader, '/export.csv'))
+      .set('Authorization', memberHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(403);
+  });
 });

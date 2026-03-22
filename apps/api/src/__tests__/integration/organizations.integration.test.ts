@@ -474,3 +474,220 @@ describe('PATCH /api/organizations/:orgId/members/:memberId — admin limits', (
     expect(res.body.error).toMatch(/owner/i);
   });
 });
+
+// ─── POST /api/organizations/:orgId/members — ADMIN role restriction ────────
+describe('POST /api/organizations/:orgId/members — ADMIN role restrictions', () => {
+  it('returns 403 when ADMIN tries to add a member with ADMIN role', async () => {
+    const owner = await seedAuth(app);
+    const admin = await seedAuth(app);
+    const newbie = await seedAuth(app);
+
+    // Add admin to org as MEMBER first, then promote
+    const addAdmin = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: admin.userId, role: 'MEMBER' });
+
+    await request(app)
+      .patch(`/api/organizations/${owner.orgId}/members/${addAdmin.body.id}`)
+      .set('Authorization', owner.authHeader)
+      .send({ role: 'ADMIN' });
+
+    // ADMIN tries to add someone as ADMIN — should fail
+    const res = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', admin.authHeader)
+      .send({ userId: newbie.userId, role: 'ADMIN' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/owner/i);
+  });
+
+  it('OWNER can add a member with ADMIN role', async () => {
+    const owner = await seedAuth(app);
+    const newbie = await seedAuth(app);
+
+    const res = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: newbie.userId, role: 'ADMIN' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.role).toBe('ADMIN');
+  });
+
+  it('returns 400 when adding a third ADMIN (max 2 limit on add)', async () => {
+    const owner = await seedAuth(app);
+    const admin1 = await seedAuth(app);
+    const admin2 = await seedAuth(app);
+    const admin3 = await seedAuth(app);
+
+    // Add first two as ADMIN
+    await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: admin1.userId, role: 'ADMIN' });
+
+    await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: admin2.userId, role: 'ADMIN' });
+
+    // Third ADMIN should be rejected
+    const res = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: admin3.userId, role: 'ADMIN' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/maximum.*2.*admin/i);
+  });
+
+  it('returns 400 for invalid input in add member', async () => {
+    const owner = await seedAuth(app);
+
+    const res = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: 'not-a-valid-cuid' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── PATCH /api/organizations/:orgId/members/:memberId — OWNER guard ────────
+describe('PATCH /api/organizations/:orgId/members/:memberId — OWNER role block', () => {
+  it('returns 400 for invalid role input', async () => {
+    const owner  = await seedAuth(app);
+    const member = await seedAuth(app);
+
+    const addRes = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: member.userId, role: 'MEMBER' });
+
+    const res = await request(app)
+      .patch(`/api/organizations/${owner.orgId}/members/${addRes.body.id}`)
+      .set('Authorization', owner.authHeader)
+      .send({ role: 'INVALID_ROLE' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 for updating a non-existent member', async () => {
+    const owner = await seedAuth(app);
+
+    const res = await request(app)
+      .patch(`/api/organizations/${owner.orgId}/members/cuid1234567890abcdefghijk`)
+      .set('Authorization', owner.authHeader)
+      .send({ role: 'ADMIN' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/member not found/i);
+  });
+});
+
+// ─── DELETE /api/organizations/:orgId/members/:memberId — error paths ───────
+describe('DELETE /api/organizations/:orgId/members/:memberId — error paths', () => {
+  it('returns 404 for a non-existent memberId', async () => {
+    const owner = await seedAuth(app);
+
+    const res = await request(app)
+      .delete(`/api/organizations/${owner.orgId}/members/cuid1234567890abcdefghijk`)
+      .set('Authorization', owner.authHeader);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when memberId exists in a different org', async () => {
+    const owner1 = await seedAuth(app);
+    const owner2 = await seedAuth(app);
+    const member = await seedAuth(app);
+
+    // Add member to owner2's org
+    const addRes = await request(app)
+      .post(`/api/organizations/${owner2.orgId}/members`)
+      .set('Authorization', owner2.authHeader)
+      .send({ userId: member.userId, role: 'MEMBER' });
+
+    // Try to delete from owner1's org — should 404
+    const res = await request(app)
+      .delete(`/api/organizations/${owner1.orgId}/members/${addRes.body.id}`)
+      .set('Authorization', owner1.authHeader);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 401 without auth', async () => {
+    const owner = await seedAuth(app);
+
+    const res = await request(app)
+      .delete(`/api/organizations/${owner.orgId}/members/cuid1234567890abcdefghijk`);
+
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─── POST /api/organizations/:orgId/transfer-ownership — edge cases ─────────
+describe('POST /api/organizations/:orgId/transfer-ownership — additional edge cases', () => {
+  it('returns 401 without auth', async () => {
+    const owner = await seedAuth(app);
+
+    const res = await request(app)
+      .post(`/api/organizations/${owner.orgId}/transfer-ownership`)
+      .send({ newOwnerUserId: owner.userId });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('verifies old owner becomes ADMIN after transfer', async () => {
+    const owner  = await seedAuth(app);
+    const member = await seedAuth(app);
+
+    await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: member.userId, role: 'MEMBER' });
+
+    await request(app)
+      .post(`/api/organizations/${owner.orgId}/transfer-ownership`)
+      .set('Authorization', owner.authHeader)
+      .send({ newOwnerUserId: member.userId });
+
+    // Old owner should now be ADMIN
+    const oldOwnerMembership = await db.organizationMember.findFirst({
+      where: { organizationId: owner.orgId, userId: owner.userId },
+    });
+    expect(oldOwnerMembership!.role).toBe('ADMIN');
+
+    // New owner should be OWNER
+    const newOwnerMembership = await db.organizationMember.findFirst({
+      where: { organizationId: owner.orgId, userId: member.userId },
+    });
+    expect(newOwnerMembership!.role).toBe('OWNER');
+  });
+
+  it('ADMIN cannot transfer ownership', async () => {
+    const owner = await seedAuth(app);
+    const admin = await seedAuth(app);
+    const target = await seedAuth(app);
+
+    const addAdmin = await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: admin.userId, role: 'ADMIN' });
+
+    await request(app)
+      .post(`/api/organizations/${owner.orgId}/members`)
+      .set('Authorization', owner.authHeader)
+      .send({ userId: target.userId, role: 'MEMBER' });
+
+    const res = await request(app)
+      .post(`/api/organizations/${owner.orgId}/transfer-ownership`)
+      .set('Authorization', admin.authHeader)
+      .send({ newOwnerUserId: target.userId });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/owner/i);
+  });
+});

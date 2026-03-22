@@ -379,3 +379,124 @@ describe('DELETE /api/comments/:id (error paths)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── Error propagation paths ────────────────────────────────────────────────
+describe('Comments error propagation paths', () => {
+  it('GET returns 403 when no org context (missing X-Organization-Id)', async () => {
+    const { authHeader, userId } = await seedAuth(app);
+
+    // Remove org memberships to eliminate implicit org context
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .get('/api/comments')
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST returns 403 when no org context', async () => {
+    const { authHeader, userId } = await seedAuth(app);
+
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .post('/api/comments')
+      .set('Authorization', freshHeader)
+      .send({ bodyMd: 'Test', matterId: 'clxxxxxxxxxxxxxxxxxxxxxxxxx' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH returns 403 when no org context', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const create = await request(app)
+      .post('/api/comments')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ bodyMd: 'Original', matterId });
+
+    // Remove org memberships
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .patch(`/api/comments/${create.body.id}`)
+      .set('Authorization', freshHeader)
+      .send({ bodyMd: 'Updated' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE returns 403 when no org context', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const create = await request(app)
+      .post('/api/comments')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ bodyMd: 'Delete me', matterId });
+
+    await db.organizationMember.deleteMany({ where: { userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user!.email, password: 'Password1!' });
+    const freshHeader = `Bearer ${loginRes.body.token}`;
+
+    const res = await request(app)
+      .delete(`/api/comments/${create.body.id}`)
+      .set('Authorization', freshHeader);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST returns 404 for non-existent matterId', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/comments')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ bodyMd: 'Ghost matter', matterId: 'clxxxxxxxxxxxxxxxxxxxxxxxxx' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/Matter not found/i);
+  });
+
+  it('PATCH returns 400 when bodyMd is missing', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const create = await request(app)
+      .post('/api/comments')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ bodyMd: 'Original', matterId });
+
+    const res = await request(app)
+      .patch(`/api/comments/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+});

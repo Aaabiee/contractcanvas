@@ -562,3 +562,234 @@ describe('PATCH /api/tasks/:id — error propagation', () => {
     expect(res.body.dueAt).toBeNull();
   });
 });
+
+// ─── POST /api/tasks — create with assigneeId ──────────────────────────────
+describe('POST /api/tasks (with assigneeId)', () => {
+  it('creates a task with assigneeId when assignee is an org member', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    // The seeded user is an org member, so assign to self
+    const res = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Assigned Task', matterId, assigneeId: userId });
+
+    expect(res.status).toBe(201);
+    expect(res.body.assigneeId).toBe(userId);
+    expect(res.body.assignee).toBeDefined();
+    expect(res.body.assignee.id).toBe(userId);
+  });
+
+  it('returns 400 when assigneeId is not a member of the org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+
+    const res = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ title: 'Bad Assignee', matterId, assigneeId: b.userId });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/assignee.*not.*member/i);
+  });
+
+  it('creates a task with dueAt and assigneeId together', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const dueAt = new Date(Date.now() + 86400000 * 7).toISOString();
+
+    const res = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Full Task', matterId, assigneeId: userId, dueAt });
+
+    expect(res.status).toBe(201);
+    expect(res.body.assigneeId).toBe(userId);
+    expect(new Date(res.body.dueAt).toISOString()).toBe(dueAt);
+  });
+});
+
+// ─── PATCH /api/tasks/:id — update assigneeId ──────────────────────────────
+describe('PATCH /api/tasks/:id (update assigneeId)', () => {
+  it('updates assigneeId to a valid org member', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Unassigned', matterId });
+
+    expect(task.body.assigneeId).toBeNull();
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ assigneeId: userId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.assigneeId).toBe(userId);
+    expect(res.body.assignee).toBeDefined();
+  });
+
+  it('clears assigneeId by setting it to null', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Assigned Then Cleared', matterId, assigneeId: userId });
+
+    expect(task.body.assigneeId).toBe(userId);
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ assigneeId: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.assigneeId).toBeNull();
+  });
+
+  it('updates dueAt to a new value', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const dueAt = new Date(Date.now() + 86400000).toISOString();
+
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Update Due', matterId });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ dueAt });
+
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.dueAt).toISOString()).toBe(dueAt);
+  });
+});
+
+// ─── DELETE /api/tasks/:id — cross-org isolation ────────────────────────────
+describe('DELETE /api/tasks/:id (cross-org)', () => {
+  it('returns 404 when deleting a task from a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ title: 'Cross-org Delete', matterId });
+
+    expect(task.status).toBe(201);
+
+    const res = await request(app)
+      .delete(`/api/tasks/${task.body.id}`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+
+    // Verify task still exists
+    const dbRecord = await db.task.findUnique({ where: { id: task.body.id } });
+    expect(dbRecord).not.toBeNull();
+  });
+});
+
+// ─── GET /api/tasks/:id — cross-org isolation ──────────────────────────────
+describe('GET /api/tasks/:id (cross-org)', () => {
+  it('returns 404 when fetching a task from a different org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ title: 'Cross-org Get', matterId });
+
+    const res = await request(app)
+      .get(`/api/tasks/${task.body.id}`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── GET /api/tasks — pagination ────────────────────────────────────────────
+describe('GET /api/tasks (pagination)', () => {
+  it('respects limit and offset parameters', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    // Create 5 tasks
+    for (let i = 0; i < 5; i++) {
+      await request(app)
+        .post('/api/tasks')
+        .set('Authorization', authHeader)
+        .set('X-Organization-Id', orgHeader)
+        .send({ title: `Task ${i}`, matterId });
+    }
+
+    const page1 = await request(app)
+      .get('/api/tasks?limit=2&offset=0')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page1.status).toBe(200);
+    expect(page1.body.data).toHaveLength(2);
+    expect(page1.body.total).toBe(5);
+    expect(page1.body.limit).toBe(2);
+    expect(page1.body.offset).toBe(0);
+
+    const page2 = await request(app)
+      .get('/api/tasks?limit=2&offset=2')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(page2.body.data).toHaveLength(2);
+    expect(page2.body.offset).toBe(2);
+  });
+
+  it('filters by assigneeId', async () => {
+    const { authHeader, orgHeader, userId } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Assigned', matterId, assigneeId: userId });
+
+    await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Unassigned', matterId });
+
+    const res = await request(app)
+      .get(`/api/tasks?assigneeId=${userId}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Assigned');
+  });
+});
