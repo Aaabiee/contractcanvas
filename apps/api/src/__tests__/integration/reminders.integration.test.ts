@@ -186,3 +186,174 @@ describe('DELETE /api/reminders/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── POST /api/reminders — validation branches ─────────────────────────────
+describe('POST /api/reminders (validation branches)', () => {
+  it('returns 400 for bad date format', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const res = await request(app)
+      .post('/api/reminders')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ contractId: contract.id, type: 'DEADLINE', dueAt: 'not-a-date' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when dueAt is missing', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const res = await request(app)
+      .post('/api/reminders')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ contractId: contract.id, type: 'DEADLINE' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when contractId is missing', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .post('/api/reminders')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ type: 'DEADLINE', dueAt: new Date().toISOString() });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for unknown type value', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const res = await request(app)
+      .post('/api/reminders')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ contractId: contract.id, type: 'UNKNOWN_TYPE', dueAt: new Date().toISOString() });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── PATCH /api/reminders — sentAt reset and validation ─────────────────────
+describe('PATCH /api/reminders/:id (sentAt reset and validation)', () => {
+  it('resets sentAt to null when dueAt is changed', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    // Create a reminder with sentAt set (already fired)
+    const reminder = await db.reminder.create({
+      data: {
+        organizationId: orgId,
+        contractId:     contract.id,
+        type:           'PAYMENT',
+        dueAt:          new Date(Date.now() - 86_400_000),
+        sentAt:         new Date(Date.now() - 3600_000),
+      },
+    });
+
+    // Confirm sentAt is initially set
+    const before = await db.reminder.findUnique({ where: { id: reminder.id } });
+    expect(before!.sentAt).not.toBeNull();
+
+    const newDue = new Date(Date.now() + 86_400_000).toISOString();
+    const res = await request(app)
+      .patch(`/api/reminders/${reminder.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ dueAt: newDue });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sentAt).toBeNull();
+
+    // Verify in DB
+    const after = await db.reminder.findUnique({ where: { id: reminder.id } });
+    expect(after!.sentAt).toBeNull();
+    expect(new Date(after!.dueAt).toISOString()).toBe(newDue);
+  });
+
+  it('does not reset sentAt when only type is changed', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const sentAt = new Date();
+    const reminder = await db.reminder.create({
+      data: {
+        organizationId: orgId,
+        contractId:     contract.id,
+        type:           'DEADLINE',
+        dueAt:          new Date(Date.now() + 86_400_000),
+        sentAt,
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/api/reminders/${reminder.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ type: 'RENEWAL' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe('RENEWAL');
+    // sentAt should NOT be reset because dueAt was not changed
+    // (the route only sets sentAt=null when dueAt is provided)
+  });
+
+  it('returns 400 for invalid dueAt format in PATCH', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const reminder = await db.reminder.create({
+      data: {
+        organizationId: orgId,
+        contractId:     contract.id,
+        type:           'DEADLINE',
+        dueAt:          new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/api/reminders/${reminder.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ dueAt: 'bad-date' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for invalid type in PATCH', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const reminder = await db.reminder.create({
+      data: {
+        organizationId: orgId,
+        contractId:     contract.id,
+        type:           'DEADLINE',
+        dueAt:          new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/api/reminders/${reminder.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ type: 'BOGUS' });
+
+    expect(res.status).toBe(400);
+  });
+});

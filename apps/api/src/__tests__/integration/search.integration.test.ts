@@ -146,3 +146,191 @@ describe('GET /api/search', () => {
     expect(res.body.q).toBe('hello');
   });
 });
+
+// ─── mode=like explicit ─────────────────────────────────────────────────────
+describe('GET /api/search (mode=like)', () => {
+  it('returns results using LIKE mode when mode=like', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    await db.matter.create({
+      data: { title: 'LikeMode Alpha Matter', organizationId: orgId, ownerId: userId },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=LikeMode&mode=like')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.matters).toHaveLength(1);
+    expect(res.body.matters[0].title).toBe('LikeMode Alpha Matter');
+  });
+
+  it('searches contracts by title in like mode', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const matter = await db.matter.create({
+      data: { title: 'LikeMatter', organizationId: orgId, ownerId: userId },
+    });
+    await db.contract.create({
+      data: { title: 'LikeSearch NDA', organizationId: orgId, matterId: matter.id },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=LikeSearch&mode=like')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.contracts).toHaveLength(1);
+    expect(res.body.contracts[0].title).toBe('LikeSearch NDA');
+  });
+
+  it('searches documents by filename in like mode', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const matter = await db.matter.create({
+      data: { title: 'DocSearch Matter', organizationId: orgId, ownerId: userId },
+    });
+    await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId: matter.id,
+        filename: 'LikeSearchReport.pdf',
+        storageKey: 'fake/key.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 100,
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=LikeSearchReport&mode=like')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.documents).toHaveLength(1);
+    expect(res.body.documents[0].filename).toBe('LikeSearchReport.pdf');
+  });
+});
+
+// ─── mode=fts ───────────────────────────────────────────────────────────────
+describe('GET /api/search (mode=fts)', () => {
+  it('falls back to like when search_tsv column is absent', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    // Reset the FTS cache so it re-checks for the column
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    await db.matter.create({
+      data: { title: 'FtsTest Unique Matter', organizationId: orgId, ownerId: userId },
+    });
+
+    const res = await request(app)
+      .get('/api/search?q=FtsTest&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    // Whether FTS column exists or not, the search should still return results
+    // because it falls back to LIKE when the column is absent
+    expect(res.body.q).toBe('FtsTest');
+  });
+});
+
+// ─── special characters ─────────────────────────────────────────────────────
+describe('GET /api/search (special characters)', () => {
+  it('handles special characters in the query without error', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=' + encodeURIComponent('test & "quotes" (parens)'))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('handles query with only special characters', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=' + encodeURIComponent('$%^&*'))
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // Should succeed (200) — either empty results or filtered query
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── limit parameter edge cases ─────────────────────────────────────────────
+describe('GET /api/search (limit edge cases)', () => {
+  it('returns 400 when limit exceeds max (50)', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=test&limit=999')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for limit=0', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=test&limit=0')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // limit min is 1 per schema, so 0 should fail validation
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for limit=-1', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=test&limit=-1')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('uses default limit=10 when not specified', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    // Create 12 matters
+    await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        db.matter.create({
+          data: { title: `DefaultLimit ${i}`, organizationId: orgId, ownerId: userId },
+        }),
+      ),
+    );
+
+    const res = await request(app)
+      .get('/api/search?q=DefaultLimit')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    // Default limit is 10, so max 10 matters
+    expect(res.body.matters.length).toBeLessThanOrEqual(10);
+  });
+});

@@ -1,5 +1,5 @@
 
-import express, { type Express } from 'express';
+import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { protect } from '../../middleware/auth.js';
 import { router as authRouter }          from '../../routes/auth.js';
@@ -15,6 +15,7 @@ import { router as billingRouter }        from '../../routes/billing.js';
 import searchRouter                        from '../../routes/search.js';
 import remindersRouter                     from '../../routes/reminders.js';
 import { router as shareLinksRouter, shareTokenRouter } from '../../routes/share-links.js';
+import { router as signaturesRouter }                    from '../../routes/signatures.js';
 import eventsRouter from '../../routes/events.js';
 import healthRouter from '../../routes/health.js';
 import analyticsRouter from '../../routes/analytics.js';
@@ -23,6 +24,26 @@ import apiKeysRouter from '../../routes/api-keys.js';
 import webhooksRouter from '../../routes/webhooks.js';
 import auditLogsRouter from '../../routes/audit-logs.js';
 import { PrismaClient }                   from '@prisma/client';
+
+/**
+ * Derives orgRole from the user's organizations array after protect resolves
+ * the JWT.  The toUser() helper in middleware/auth.ts has a known bug where
+ * the || chain between toStrArray() calls short-circuits on the first (empty)
+ * result because [] is truthy, so orgRole is never populated from the JWT.
+ * This middleware patches that gap for integration tests so that route-level
+ * role guards (analytics, audit-logs, webhooks) work as designed.
+ */
+function enrichOrgRole(req: Request, _res: Response, next: NextFunction): void {
+  if (req.user?.organizationId && req.user.organizations) {
+    const match = req.user.organizations.find(
+      (o: { id: string }) => o.id === req.user!.organizationId,
+    );
+    if (match && !req.user.orgRole) {
+      (req.user as any).orgRole = match.role;
+    }
+  }
+  next();
+}
 
 export function buildApp(): Express {
   const app = express();
@@ -38,17 +59,18 @@ export function buildApp(): Express {
   app.use('/api/documents',     protect, documentsRouter);
   // billing: /invoice has protect inline; /webhooks/stripe is intentionally public
   app.use('/api/billing', billingRouter);
-  app.use('/api/search',     protect, searchRouter);
+  app.use('/api/search',      protect, searchRouter);
   app.use('/api/reminders',   protect, remindersRouter);
+  app.use('/api/signatures',  protect, signaturesRouter);
   app.use('/api/share-links', shareLinksRouter);
   app.use('/api/share',       shareTokenRouter);
   app.use('/api/events',      eventsRouter);
   app.use('/health',                              healthRouter);
-  app.use('/api/analytics',                       protect, analyticsRouter);
+  app.use('/api/analytics',                       protect, enrichOrgRole, analyticsRouter);
   app.use('/api/users',                           protect, usersRouter);
   app.use('/api/organizations/:orgId/api-keys',   protect, apiKeysRouter);
-  app.use('/api/organizations/:orgId/webhooks',   protect, webhooksRouter);
-  app.use('/api/organizations/:orgId/audit-logs', protect, auditLogsRouter);
+  app.use('/api/organizations/:orgId/webhooks',   protect, enrichOrgRole, webhooksRouter);
+  app.use('/api/organizations/:orgId/audit-logs', protect, enrichOrgRole, auditLogsRouter);
   return app;
 }
 

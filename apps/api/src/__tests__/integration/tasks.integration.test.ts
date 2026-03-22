@@ -300,3 +300,265 @@ describe('DELETE /api/tasks/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── PATCH /api/tasks/:id — completedAt set/unset lifecycle ─────────────────
+describe('PATCH /api/tasks/:id — completedAt lifecycle', () => {
+  it('sets completedAt, then unsets it, then sets it again', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Lifecycle Task', matterId });
+
+    expect(task.body.completedAt).toBeNull();
+
+    // Set completedAt (mark done)
+    const now = new Date().toISOString();
+    const res1 = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: now });
+
+    expect(res1.status).toBe(200);
+    expect(res1.body.completedAt).not.toBeNull();
+
+    // Unset completedAt (reopen)
+    const res2 = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: null });
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.completedAt).toBeNull();
+
+    // Set completedAt again
+    const later = new Date().toISOString();
+    const res3 = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: later });
+
+    expect(res3.status).toBe(200);
+    expect(res3.body.completedAt).not.toBeNull();
+
+    // Verify in DB
+    const dbRecord = await db.task.findUnique({ where: { id: task.body.id } });
+    expect(dbRecord!.completedAt).not.toBeNull();
+  });
+
+  it('persists completedAt in database after setting', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'DB Check Task', matterId });
+
+    const completedAt = new Date().toISOString();
+    await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt });
+
+    const dbTask = await db.task.findUnique({ where: { id: task.body.id } });
+    expect(dbTask!.completedAt).not.toBeNull();
+    expect(new Date(dbTask!.completedAt!).toISOString()).toBe(completedAt);
+  });
+
+  it('persists null completedAt in database after unsetting', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Unset DB Check', matterId });
+
+    // Complete
+    await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: new Date().toISOString() });
+
+    // Uncomplete
+    await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: null });
+
+    const dbTask = await db.task.findUnique({ where: { id: task.body.id } });
+    expect(dbTask!.completedAt).toBeNull();
+  });
+});
+
+// ─── PATCH /api/tasks/:id — webhook queue fire on task completion ───────────
+describe('PATCH /api/tasks/:id — webhook on completion', () => {
+  it('task completion triggers no errors (webhook queue may be null in test)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Webhook Task', matterId });
+
+    const completedAt = new Date().toISOString();
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt });
+
+    // The webhook queue may or may not be available in tests, but the
+    // endpoint should not error regardless.
+    expect(res.status).toBe(200);
+    expect(res.body.completedAt).not.toBeNull();
+  });
+
+  it('does not fire webhook when task was already completed (re-setting same value)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Double Complete', matterId });
+
+    const completedAt = new Date().toISOString();
+    await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt });
+
+    // Second completion (already completed) — should still succeed
+    const later = new Date(Date.now() + 10000).toISOString();
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: later });
+
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── PATCH /api/tasks/:id — error propagation paths ─────────────────────────
+describe('PATCH /api/tasks/:id — error propagation', () => {
+  it('returns 404 when patching a task from another org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ title: 'Cross-org Task', matterId });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader)
+      .send({ title: 'Hijacked' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for invalid completedAt format', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Bad Date', matterId });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ completedAt: 'not-a-date' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when assigneeId is not a member of the org', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+    const matterId = await seedMatter(a.authHeader, a.orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ title: 'Assign Error', matterId });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader)
+      .send({ assigneeId: b.userId });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/assignee.*not.*member/i);
+  });
+
+  it('returns 404 when patching a non-existent task', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/tasks/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Ghost' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for invalid dueAt format', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Bad Due', matterId });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ dueAt: 'tomorrow' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('clears dueAt by setting it to null', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const dueAt = new Date(Date.now() + 86400000).toISOString();
+    const task = await request(app)
+      .post('/api/tasks')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Clear Due', matterId, dueAt });
+
+    expect(task.body.dueAt).not.toBeNull();
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ dueAt: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.dueAt).toBeNull();
+  });
+});

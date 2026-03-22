@@ -353,3 +353,133 @@ describe('DELETE /api/documents/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── GET /api/documents/:id/download (valid doc) ────────────────────────────
+describe('GET /api/documents/:id/download (additional coverage)', () => {
+  it('returns a presigned URL that contains the sanitized filename', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const upload = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 extra'), { filename: 'report (final).pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(upload.status).toBe(201);
+
+    const res = await request(app)
+      .get(`/api/documents/${upload.body.id}/download`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.url).toBe('string');
+    // The filename should be sanitized (special chars replaced)
+    expect(res.body.url).toContain('X-Amz-Signature');
+  });
+
+  it('returns 404 for download of a soft-deleted document', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const upload = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'deleted.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    await request(app)
+      .delete(`/api/documents/${upload.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    const res = await request(app)
+      .get(`/api/documents/${upload.body.id}/download`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── Soft-delete excludes from GET list ─────────────────────────────────────
+describe('GET /api/documents (soft-delete exclusion)', () => {
+  it('excludes soft-deleted documents from the list', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const upload1 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'keep.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    const upload2 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: 'remove.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    // Soft-delete the second document
+    await request(app)
+      .delete(`/api/documents/${upload2.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    const res = await request(app)
+      .get(`/api/documents?matterId=${matterId}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].filename).toBe('keep.pdf');
+  });
+});
+
+// ─── Re-upload after delete ─────────────────────────────────────────────────
+describe('POST /api/documents/upload (re-upload after delete)', () => {
+  it('can upload a new document with the same filename after deleting the previous one', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+
+    const upload1 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 v1'), { filename: 'invoice.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(upload1.status).toBe(201);
+
+    await request(app)
+      .delete(`/api/documents/${upload1.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    const upload2 = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .attach('file', Buffer.from('%PDF-1.4 v2'), { filename: 'invoice.pdf', contentType: 'application/pdf' })
+      .field('matterId', matterId);
+
+    expect(upload2.status).toBe(201);
+    expect(upload2.body.id).not.toBe(upload1.body.id);
+    expect(upload2.body.filename).toBe('invoice.pdf');
+
+    // List should only show the new upload
+    const list = await request(app)
+      .get(`/api/documents?matterId=${matterId}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].id).toBe(upload2.body.id);
+  });
+});

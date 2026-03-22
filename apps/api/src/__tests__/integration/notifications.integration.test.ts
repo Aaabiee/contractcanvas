@@ -175,3 +175,111 @@ describe('PATCH /api/notifications/read-all', () => {
     expect(res.body.updated).toBe(0);
   });
 });
+
+// ─── PATCH /api/notifications/:id/read — idempotent (already-read) ─────────
+describe('PATCH /api/notifications/:id/read (already-read)', () => {
+  it('succeeds when marking an already-read notification as read', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    const n = await seedNotification(userId, orgId, 'Already Read', new Date());
+
+    const res = await request(app)
+      .patch(`/api/notifications/${n.id}/read`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.readAt).not.toBeNull();
+    // readAt should be updated to a new timestamp
+    expect(res.body.id).toBe(n.id);
+  });
+
+  it('does not change unreadCount when marking an already-read notification', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    await seedNotification(userId, orgId, 'Unread One');
+    const alreadyRead = await seedNotification(userId, orgId, 'Already Read', new Date());
+
+    // Get unreadCount before
+    const before = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+    expect(before.body.unreadCount).toBe(1);
+
+    // Mark the already-read one as read again
+    await request(app)
+      .patch(`/api/notifications/${alreadyRead.id}/read`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // unreadCount should remain 1
+    const after = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+    expect(after.body.unreadCount).toBe(1);
+  });
+});
+
+// ─── PATCH /api/notifications/read-all — all already read ──────────────────
+describe('PATCH /api/notifications/read-all (all already read)', () => {
+  it('returns updated: 0 when all notifications are already read', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    await seedNotification(userId, orgId, 'Read 1', new Date());
+    await seedNotification(userId, orgId, 'Read 2', new Date());
+
+    const res = await request(app)
+      .patch('/api/notifications/read-all')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.updated).toBe(0);
+  });
+
+  it('only marks unread notifications in a mixed set', async () => {
+    const { authHeader, orgHeader, userId, orgId } = await seedAuth(app);
+    await seedNotification(userId, orgId, 'Read', new Date());
+    await seedNotification(userId, orgId, 'Unread 1');
+    await seedNotification(userId, orgId, 'Unread 2');
+
+    const res = await request(app)
+      .patch('/api/notifications/read-all')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(2);
+
+    // Verify all are now read
+    const after = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(after.body.unreadCount).toBe(0);
+    expect(after.body.total).toBe(3);
+  });
+
+  it('does not affect other users notifications', async () => {
+    const a = await seedAuth(app);
+    const b = await seedAuth(app);
+
+    await seedNotification(a.userId, a.orgId, 'A unread');
+    await seedNotification(b.userId, b.orgId, 'B unread');
+
+    // User A marks all read
+    await request(app)
+      .patch('/api/notifications/read-all')
+      .set('Authorization', a.authHeader)
+      .set('X-Organization-Id', a.orgHeader);
+
+    // User B should still have unread
+    const resB = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', b.authHeader)
+      .set('X-Organization-Id', b.orgHeader);
+
+    expect(resB.body.unreadCount).toBe(1);
+  });
+});

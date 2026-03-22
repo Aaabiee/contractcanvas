@@ -210,3 +210,305 @@ describe('GET /api/auth/me', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ─── POST /change-password ──────────────────────────────────────────────────
+describe('POST /api/auth/change-password', () => {
+  let token: string;
+
+  beforeEach(async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    // Verify email so the requireEmailVerified guard passes
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { emailVerifiedAt: new Date(), verifyToken: null, verifyTokenExp: null },
+    });
+
+    const loginRes = await request(buildApp())
+      .post('/api/auth/login')
+      .send({ email: validPayload.email, password: validPayload.password });
+    token = loginRes.body.token;
+  });
+
+  it('returns 400 for invalid input (missing fields)', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'Password1!' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for a weak new password', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'Password1!', newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 when current password is wrong', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'WrongPassword99!', newPassword: 'NewSecure123!@#' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/current password/i);
+  });
+
+  it('returns 200 on successful password change', async () => {
+    const newPassword = 'BrandNewPass99!@';
+    const res = await request(buildApp())
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'Password1!', newPassword: newPassword });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // Verify the new password works for login
+    const loginRes = await request(buildApp())
+      .post('/api/auth/login')
+      .send({ email: validPayload.email, password: newPassword });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.token).toBeTruthy();
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/change-password')
+      .send({ currentPassword: 'Password1!', newPassword: 'NewSecure123!@#' });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when email is not verified', async () => {
+    // Register a new user without verifying email
+    const unverifiedPayload = {
+      ...validPayload,
+      email: 'unverified@example.com',
+      organizationSlug: 'unverified-org',
+      organizationName: 'Unverified Org',
+    };
+    await request(buildApp()).post('/api/auth/register?autoLogin=1').send(unverifiedPayload);
+    const loginRes = await request(buildApp())
+      .post('/api/auth/login')
+      .send({ email: unverifiedPayload.email, password: unverifiedPayload.password });
+    const unverifiedToken = loginRes.body.token;
+
+    const res = await request(buildApp())
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+      .send({ currentPassword: 'Password1!', newPassword: 'NewSecure123!@#' });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── POST /logout ───────────────────────────────────────────────────────────
+describe('POST /api/auth/logout', () => {
+  it('returns ok:true and clears session', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+    const loginRes = await request(buildApp())
+      .post('/api/auth/login')
+      .send({ email: validPayload.email, password: validPayload.password });
+    const token = loginRes.body.token;
+
+    const res = await request(buildApp())
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns ok:true even without a token (graceful)', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/logout');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});
+
+// ─── POST /resend-verification ──────────────────────────────────────────────
+describe('POST /api/auth/resend-verification', () => {
+  it('returns 400 for invalid email', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/resend-verification')
+      .send({ email: 'not-an-email' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 200 for non-existent email (does not leak user existence)', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/resend-verification')
+      .send({ email: 'ghost@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 200 for already-verified email (does not leak verification status)', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { emailVerifiedAt: new Date(), verifyToken: null, verifyTokenExp: null },
+    });
+
+    const res = await request(buildApp())
+      .post('/api/auth/resend-verification')
+      .send({ email: validPayload.email });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 200 for an unverified user', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    // Set the verifyTokenExp far in the past so rate-limit check passes
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { verifyTokenExp: new Date(Date.now() - 48 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000) },
+    });
+
+    const res = await request(buildApp())
+      .post('/api/auth/resend-verification')
+      .send({ email: validPayload.email });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});
+
+// ─── POST /forgot-password ──────────────────────────────────────────────────
+describe('POST /api/auth/forgot-password', () => {
+  it('returns 400 for invalid email', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'not-an-email' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 200 for non-existent email (does not leak user existence)', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'nobody@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 200 and sets resetToken for existing user', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    const res = await request(buildApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: validPayload.email });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // Verify the DB has a reset token
+    const user = await db.user.findUnique({ where: { email: validPayload.email } });
+    expect(user!.resetToken).not.toBeNull();
+    expect(user!.resetTokenExp).not.toBeNull();
+  });
+});
+
+// ─── POST /reset-password ───────────────────────────────────────────────────
+describe('POST /api/auth/reset-password', () => {
+  it('returns 400 for invalid input', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/reset-password')
+      .send({ token: '', newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for invalid/expired token', async () => {
+    const res = await request(buildApp())
+      .post('/api/auth/reset-password')
+      .send({ token: 'some-bogus-token-value-that-does-not-exist', newPassword: 'NewSecure123!@#' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid or expired/i);
+  });
+
+  it('returns 400 for expired reset token', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    // Trigger forgot-password to get a reset token in the DB
+    await request(buildApp())
+      .post('/api/auth/forgot-password')
+      .send({ email: validPayload.email });
+
+    // Manually expire the reset token
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { resetTokenExp: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+
+    // The hashed token is in the DB, but we need the raw token. Since we
+    // cannot easily retrieve it, we create a known one.
+    const crypto = await import('node:crypto');
+    const rawToken   = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { resetToken: hashedToken, resetTokenExp: new Date(Date.now() - 1000) },
+    });
+
+    const res = await request(buildApp())
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, newPassword: 'NewSecure123!@#' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid or expired/i);
+  });
+
+  it('successfully resets password with a valid token', async () => {
+    await request(buildApp()).post('/api/auth/register').send(validPayload);
+
+    const crypto = await import('node:crypto');
+    const rawToken   = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await db.user.updateMany({
+      where: { email: validPayload.email },
+      data:  { resetToken: hashedToken, resetTokenExp: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+
+    const newPassword = 'ResetPassword99!@';
+    const res = await request(buildApp())
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, newPassword });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // Verify old password no longer works
+    const loginOld = await request(buildApp())
+      .post('/api/auth/login')
+      .send({ email: validPayload.email, password: validPayload.password });
+    expect(loginOld.status).toBe(401);
+
+    // Verify new password works
+    const loginNew = await request(buildApp())
+      .post('/api/auth/login')
+      .send({ email: validPayload.email, password: newPassword });
+    expect(loginNew.status).toBe(200);
+    expect(loginNew.body.token).toBeTruthy();
+
+    // Verify reset token is cleared
+    const user = await db.user.findUnique({ where: { email: validPayload.email } });
+    expect(user!.resetToken).toBeNull();
+    expect(user!.resetTokenExp).toBeNull();
+  });
+});

@@ -288,3 +288,142 @@ describe('DELETE /api/matters/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── PATCH /api/matters/:id — error paths ───────────────────────────────────
+describe('PATCH /api/matters/:id (error paths)', () => {
+  it('returns 400 when status is invalid', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const create = await request(app)
+      .post('/api/matters')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Bad Patch' });
+
+    const res = await request(app)
+      .patch(`/api/matters/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ status: 'INVALID_STATUS' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when patching a non-existent matter', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .patch('/api/matters/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Ghost' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when patching a soft-deleted matter', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const create = await request(app)
+      .post('/api/matters')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Deleted Patch' });
+
+    await request(app)
+      .delete(`/api/matters/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    const res = await request(app)
+      .patch(`/api/matters/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Cannot Patch' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── POST /api/matters — description field ──────────────────────────────────
+describe('POST /api/matters (description)', () => {
+  it('creates a matter with a description', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/matters')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Described Matter', description: 'A detailed description of this matter' });
+
+    expect(res.status).toBe(201);
+
+    const dbRecord = await db.matter.findUnique({ where: { id: res.body.id } });
+    expect(dbRecord!.description).toBe('A detailed description of this matter');
+  });
+
+  it('creates a matter with null description when omitted', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/matters')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'No Description' });
+
+    expect(res.status).toBe(201);
+
+    const dbRecord = await db.matter.findUnique({ where: { id: res.body.id } });
+    expect(dbRecord!.description).toBeNull();
+  });
+});
+
+// ─── GET /api/matters — soft-deleted excluded (additional) ──────────────────
+describe('GET /api/matters (soft-delete additional)', () => {
+  it('soft-deleted matter is excluded from GET /:id', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const create = await request(app)
+      .post('/api/matters')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Get Then Delete' });
+
+    await request(app)
+      .delete(`/api/matters/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    const res = await request(app)
+      .get(`/api/matters/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('soft-deleted matters are excluded from list even with status filter', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const create = await request(app)
+      .post('/api/matters')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Open Deleted', status: 'OPEN' });
+
+    await request(app)
+      .delete(`/api/matters/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    const res = await request(app)
+      .get('/api/matters?status=OPEN')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.body.data).toHaveLength(0);
+  });
+
+  it('returns 404 when deleting a non-existent matter', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .delete('/api/matters/cuid1234567890abcdefghijk')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(404);
+  });
+});

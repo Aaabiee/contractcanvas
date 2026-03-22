@@ -178,3 +178,217 @@ describe('DELETE /api/share-links/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── GET /api/share-links (list) ────────────────────────────────────────────
+describe('GET /api/share-links', () => {
+  it('returns 401 when unauthenticated', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/api/share-links');
+    expect(res.status).toBe(401);
+  });
+
+  it('lists all share links for the org', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    // Create two links
+    await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'viewer' });
+
+    await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'editor' });
+
+    const res = await request(app)
+      .get('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.total).toBe(2);
+  });
+
+  it('returns empty when no share links exist', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('filters by resourceType', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'viewer' });
+
+    const res = await request(app)
+      .get('/api/share-links?resourceType=contract')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].resourceType).toBe('contract');
+  });
+
+  it('does not return share links from another org', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const { orgId: otherOrgId, userId: otherUserId } = await seedAuth(app);
+    const otherContract = await seedContract(otherOrgId, otherUserId);
+
+    await db.shareLink.create({
+      data: {
+        organizationId: otherOrgId,
+        resourceType:   'contract',
+        resourceId:     otherContract.id,
+        token:          'tok-list-other',
+        role:           'viewer',
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+  });
+});
+
+// ─── POST /api/share-links (matter & document resource types) ───────────────
+describe('POST /api/share-links (matter & document)', () => {
+  it('creates a share link for a matter', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const matter = await db.matter.create({
+      data: { title: 'Share Matter', organizationId: orgId, ownerId: userId },
+    });
+
+    const res = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'matter', resourceId: matter.id, role: 'viewer' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.resourceType).toBe('matter');
+    expect(res.body.resourceId).toBe(matter.id);
+    expect(res.body.token).toBeTruthy();
+  });
+
+  it('creates a share link for a document', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const matter = await db.matter.create({
+      data: { title: 'Doc Matter', organizationId: orgId, ownerId: userId },
+    });
+    const doc = await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId:       matter.id,
+        filename:       'shared.pdf',
+        storageKey:     'fake/shared.pdf',
+        mimeType:       'application/pdf',
+        sizeBytes:      200,
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'document', resourceId: doc.id, role: 'commenter' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.resourceType).toBe('document');
+    expect(res.body.resourceId).toBe(doc.id);
+    expect(res.body.role).toBe('commenter');
+  });
+
+  it('creates a link with editor role', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const contract = await seedContract(orgId, userId);
+
+    const res = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'contract', resourceId: contract.id, role: 'editor' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.role).toBe('editor');
+  });
+});
+
+// ─── GET /api/share/:token (matter & document) ─────────────────────────────
+describe('GET /api/share/:token (matter & document)', () => {
+  it('returns matter resource for a valid token', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const matter = await db.matter.create({
+      data: { title: 'Shared Matter', organizationId: orgId, ownerId: userId },
+    });
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'matter', resourceId: matter.id, role: 'viewer' });
+
+    const res = await request(app).get(`/api/share/${createRes.body.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.resourceType).toBe('matter');
+    expect(res.body.resource.id).toBe(matter.id);
+  });
+
+  it('returns document resource for a valid token', async () => {
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+    const matter = await db.matter.create({
+      data: { title: 'DocShare Matter', organizationId: orgId, ownerId: userId },
+    });
+    const doc = await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId:       matter.id,
+        filename:       'token-doc.pdf',
+        storageKey:     'fake/token-doc.pdf',
+        mimeType:       'application/pdf',
+        sizeBytes:      100,
+      },
+    });
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ resourceType: 'document', resourceId: doc.id, role: 'viewer' });
+
+    const res = await request(app).get(`/api/share/${createRes.body.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.resourceType).toBe('document');
+    expect(res.body.resource.id).toBe(doc.id);
+  });
+});

@@ -323,3 +323,209 @@ describe('GET /api/contracts/:contractId/versions', () => {
     expect(res.body[1].number).toBe(1);
   });
 });
+
+// ─── PATCH /api/contracts/:id — optimistic lock conflict (409) ──────────────
+describe('PATCH /api/contracts/:id — optimistic lock', () => {
+  it('returns 409 when updatedAt does not match (conflict)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Lock Test', matterId });
+
+    // First update succeeds — advances updatedAt
+    await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Updated Title' });
+
+    // Second update sends stale updatedAt — should conflict
+    const res = await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Stale Update', updatedAt: create.body.updatedAt });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('conflict');
+    expect(res.body).toHaveProperty('serverUpdatedAt');
+  });
+
+  it('succeeds when updatedAt matches current server value', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Lock OK', matterId });
+
+    const res = await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Fresh Update', updatedAt: create.body.updatedAt });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Fresh Update');
+  });
+});
+
+// ─── PATCH /api/contracts/:id — invalid status transitions (422) ────────────
+describe('PATCH /api/contracts/:id — status transitions', () => {
+  it('returns 422 for DRAFT -> EXECUTED (invalid transition)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Transition Test', matterId });
+
+    expect(create.body.status).toBe('DRAFT');
+
+    const res = await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ status: 'EXECUTED' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_transition');
+    expect(res.body.message).toMatch(/DRAFT.*EXECUTED/);
+    expect(Array.isArray(res.body.allowed)).toBe(true);
+  });
+
+  it('returns 422 for EXECUTED -> DRAFT (invalid transition)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Exec Test', matterId });
+
+    // Walk to EXECUTED: DRAFT -> NEGOTIATION -> PENDING_SIGNATURE -> EXECUTED
+    const h = { Authorization: authHeader, 'X-Organization-Id': orgHeader };
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'NEGOTIATION' });
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'PENDING_SIGNATURE' });
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'EXECUTED' });
+
+    const res = await request(app)
+      .patch(`/api/contracts/${create.body.id}`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ status: 'DRAFT' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_transition');
+  });
+
+  it('walks through valid state machine: DRAFT -> NEGOTIATION -> PENDING_SIGNATURE -> EXECUTED -> ARCHIVED', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Full Walk', matterId });
+
+    const h = { Authorization: authHeader, 'X-Organization-Id': orgHeader };
+
+    // DRAFT -> NEGOTIATION
+    let res = await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'NEGOTIATION' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('NEGOTIATION');
+
+    // NEGOTIATION -> PENDING_SIGNATURE
+    res = await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'PENDING_SIGNATURE' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('PENDING_SIGNATURE');
+
+    // PENDING_SIGNATURE -> EXECUTED
+    res = await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'EXECUTED' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('EXECUTED');
+
+    // EXECUTED -> ARCHIVED
+    res = await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'ARCHIVED' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ARCHIVED');
+  });
+
+  it('allows ARCHIVED -> DRAFT (reactivation)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Archive Test', matterId });
+
+    const h = { Authorization: authHeader, 'X-Organization-Id': orgHeader };
+
+    // DRAFT -> ARCHIVED
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'ARCHIVED' });
+
+    // ARCHIVED -> DRAFT
+    const res = await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'DRAFT' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('DRAFT');
+  });
+
+  it('allows NEGOTIATION -> DRAFT (back to draft)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'Back to Draft', matterId });
+
+    const h = { Authorization: authHeader, 'X-Organization-Id': orgHeader };
+
+    await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'NEGOTIATION' });
+
+    const res = await request(app).patch(`/api/contracts/${create.body.id}`).set(h).send({ status: 'DRAFT' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('DRAFT');
+  });
+});
+
+// ─── POST /api/contracts/:id/generate-pdf ───────────────────────────────────
+describe('POST /api/contracts/:id/generate-pdf', () => {
+  it('returns 404 for unknown contract', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const res = await request(app)
+      .post('/api/contracts/cuid1234567890abcdefghijk/generate-pdf')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // Could be 402 (no subscription) or 404 depending on middleware order
+    expect([402, 404]).toContain(res.status);
+  });
+
+  it('returns 402 or 503 for a valid contract (subscription/puppeteer guard)', async () => {
+    const { authHeader, orgHeader } = await seedAuth(app);
+    const matterId = await seedMatter(authHeader, orgHeader);
+    const create = await request(app)
+      .post('/api/contracts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader)
+      .send({ title: 'PDF Test', matterId });
+
+    const res = await request(app)
+      .post(`/api/contracts/${create.body.id}/generate-pdf`)
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    // In test environment, either:
+    // - 402 if no active subscription (requireActiveSubscription guard)
+    // - 503 if puppeteer is not installed
+    // - 200 if PDF generation succeeds
+    expect([200, 402, 503]).toContain(res.status);
+  });
+});
