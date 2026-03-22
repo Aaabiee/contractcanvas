@@ -22,7 +22,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && vitest run --config vitest.isolated.config.ts --coverage",
+    "test:isolated": "vitest run --config vitest.isolated.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:coverage": "vitest run --config vitest.integration.config.ts --coverage"
   },

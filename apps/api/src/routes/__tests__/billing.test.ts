@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-process.env.JWT_SECRET = 'test-secret-key-for-testing';
+process.env.JWT_SECRET = 'test-secret-key-for-testing-minimum-32!!';
 process.env.NODE_ENV = 'test';
 
 vi.mock('../../config.js', () => ({
@@ -10,7 +10,7 @@ vi.mock('../../config.js', () => ({
   db: { host: 'localhost', name: 'test', password: 'test', user: 'test', port: 5432, schema: 'public', container_name: 'test' },
   s3: { region: 'us-east-1', bucket: 'test', forcePathStyle: true },
   stripe: { secretKey: 'sk_test_real_key', webhookSecret: 'whsec_test_secret' },
-  jwt: { secret: 'test-secret-key-for-testing' },
+  jwt: { secret: 'test-secret-key-for-testing-minimum-32!!' },
   DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
 }));
 

@@ -4,7 +4,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
 
-process.env.JWT_SECRET = 'test-secret-key-for-testing';
+process.env.JWT_SECRET = 'test-secret-key-for-testing-minimum-32!!';
 process.env.NODE_ENV = 'test';
 
 vi.mock('../../config.js', () => ({
@@ -12,7 +12,7 @@ vi.mock('../../config.js', () => ({
   db: { host: 'localhost', name: 'test', password: 'test', user: 'test', port: 5432, schema: 'public', container_name: 'test' },
   s3: { region: 'us-east-1', bucket: 'test', forcePathStyle: true },
   stripe: {},
-  jwt: { secret: 'test-secret-key-for-testing' },
+  jwt: { secret: 'test-secret-key-for-testing-minimum-32!!' },
   DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
 }));
 
@@ -213,7 +213,7 @@ describe('POST /api/auth/login', () => {
     expect(res.body.token).toBeTruthy();
     expect(res.body.user.email).toBe('a@b.com');
     expect(res.body.organizations).toHaveLength(1);
-    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
+    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing-minimum-32!!') as any;
     expect(decoded.sub).toBe('u1');
   });
 
@@ -226,7 +226,7 @@ describe('POST /api/auth/login', () => {
     ]);
     const app = buildApp();
     const res = await request(app).post('/auth/login').send({ email: 'a@b.com', password: 'pass' });
-    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
+    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing-minimum-32!!') as any;
     expect(decoded.organizations).toHaveLength(1);
     expect(decoded.organizations[0].id).toBe('org-2');
   });
@@ -354,7 +354,7 @@ describe('POST /api/auth/register — autoLogin and redirect flags', () => {
       .send(validRegisterPayload);
     expect(res.status).toBe(201);
     expect(res.body.token).toBeTruthy();
-    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
+    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing-minimum-32!!') as any;
     expect(decoded.sub).toBe('u1');
   });
 
@@ -520,7 +520,7 @@ describe('POST /api/auth/refresh-token', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTruthy();
-    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing') as any;
+    const decoded = jwt.verify(res.body.token, 'test-secret-key-for-testing-minimum-32!!') as any;
     expect(decoded.sub).toBe('u1');
     expect(decoded.organizations).toHaveLength(1);
   });
@@ -758,7 +758,7 @@ describe('POST /api/auth/reset-password', () => {
 describe('POST /api/auth/logout', () => {
   it('returns ok when called with a Bearer token', async () => {
     const app = buildApp();
-    const token = jwt.sign({ sub: 'u1', jti: 'jti-1', exp: Math.floor(Date.now() / 1000) + 3600 }, 'test-secret-key-for-testing');
+    const token = jwt.sign({ sub: 'u1', jti: 'jti-1', exp: Math.floor(Date.now() / 1000) + 3600 }, 'test-secret-key-for-testing-minimum-32!!');
     const res = await request(app)
       .post('/auth/logout')
       .set('Authorization', `Bearer ${token}`);
