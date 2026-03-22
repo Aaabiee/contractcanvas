@@ -391,4 +391,8 @@ router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async
   }
 });
 
+/** @internal — exposed only for unit-test seams; not part of the public API. */
+export function _getStripe(): Stripe | null { return stripe; }
+export function _setStripe(s: Stripe | null): void { stripe = s; }
+
 export default router;

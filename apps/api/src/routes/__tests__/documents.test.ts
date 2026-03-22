@@ -48,6 +48,14 @@ vi.mock('../billing.js', () => ({
   billing: { use: vi.fn() },
 }));
 
+const mockWebhookAdd = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockWebhookQueue = vi.hoisted(() => ({ add: mockWebhookAdd }));
+vi.mock('../../queues/index.js', () => ({
+  webhookQueue: mockWebhookQueue,
+  emailQueue: null,
+  pdfQueue: null,
+}));
+
 const { router } = await import('../documents.js');
 
 function buildApp(orgId = 'org-1') {
@@ -337,8 +345,15 @@ describe('POST /api/documents/upload — webhookQueue and upload error', () => {
       .field('matterId', validMatterId);
 
     expect(res.status).toBe(201);
-    // webhookQueue is null in mock, so the block is skipped; just ensure no crash
     expect(res.body.id).toBe('doc-wh');
+    expect(mockWebhookAdd).toHaveBeenCalledWith(
+      'document.uploaded',
+      expect.objectContaining({
+        organizationId: 'org-1',
+        event: 'document.uploaded',
+        payload: expect.objectContaining({ documentId: 'doc-wh', filename: 'test.pdf', matterId: validMatterId }),
+      })
+    );
   });
 
   it('propagates errors from S3 upload via next(error)', async () => {
@@ -399,5 +414,42 @@ describe('error propagation via next(err)', () => {
     mockPrisma.document.update.mockRejectedValue(new Error('DB'));
     const res = await request(buildWithErrHandler()).delete('/doc-1');
     expect(res.status).toBe(500);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  webhookQueue.add — rejection is swallowed by .catch(() => {})     */
+/* ------------------------------------------------------------------ */
+describe('POST /api/documents/upload — webhookQueue.add rejection is swallowed', () => {
+  it('still returns 201 even when webhookQueue.add rejects', async () => {
+    mockWebhookAdd.mockRejectedValueOnce(new Error('Redis down'));
+    mockPrisma.matter.findFirst.mockResolvedValue({ id: validMatterId });
+    const doc = {
+      id: 'doc-resilient',
+      matterId: validMatterId,
+      filename: 'resilient.pdf',
+      storageKey: 'orgs/org-1/matters/clxx/456-def.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 10,
+      kind: 'UPLOADED',
+    };
+    mockPrisma.document.create.mockResolvedValue(doc);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/upload')
+      .attach('file', Buffer.from('pdf-data'), 'resilient.pdf')
+      .field('matterId', validMatterId);
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('doc-resilient');
+    expect(mockWebhookAdd).toHaveBeenCalledWith(
+      'document.uploaded',
+      expect.objectContaining({
+        organizationId: 'org-1',
+        event: 'document.uploaded',
+        payload: expect.objectContaining({ documentId: 'doc-resilient' }),
+      })
+    );
   });
 });

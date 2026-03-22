@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -90,7 +90,7 @@ const mockSendEmail = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../services/email.service.js', () => ({ sendEmail: mockSendEmail }));
 vi.mock('../../queues/index.js', () => ({ emailQueue: null }));
 
-const { router, requireActiveSubscription } = await import('../billing.js');
+const { router, requireActiveSubscription, _getStripe, _setStripe } = await import('../billing.js');
 
 function buildApp() {
   const app = express();
@@ -953,5 +953,49 @@ describe('POST /billing/portal-session — no organization', () => {
     const res = await request(app).post('/billing/portal-session');
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('No active organization.');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  stripe === null  →  501 responses                                  */
+/*  Covers: isStripeActive middleware (lines 43-44),                    */
+/*          POST /subscribe inline check (lines 126-128),              */
+/*          POST /portal-session inline check (lines 204-206)          */
+/* ------------------------------------------------------------------ */
+describe('billing routes when stripe is null', () => {
+  let savedStripe: any;
+
+  beforeEach(() => {
+    savedStripe = _getStripe();
+    _setStripe(null);
+  });
+
+  afterEach(() => {
+    _setStripe(savedStripe);
+  });
+
+  it('POST /invoice returns 501 via isStripeActive middleware when stripe is null', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/billing/invoice')
+      .send({ amount_cents: 1000 });
+    expect(res.status).toBe(501);
+    expect(res.body.error).toBe('Billing is not configured on this server.');
+  });
+
+  it('POST /subscribe returns 501 when stripe is null', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/billing/subscribe')
+      .send({ tier: 'STARTER', priceId: 'price_123' });
+    expect(res.status).toBe(501);
+    expect(res.body.error).toBe('Billing is not configured on this server.');
+  });
+
+  it('POST /portal-session returns 501 when stripe is null', async () => {
+    const app = buildApp();
+    const res = await request(app).post('/billing/portal-session');
+    expect(res.status).toBe(501);
+    expect(res.body.error).toBe('Billing is not configured on this server.');
   });
 });

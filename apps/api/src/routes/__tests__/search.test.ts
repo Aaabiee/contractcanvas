@@ -22,7 +22,7 @@ const mockPrisma = {
 };
 vi.mock('../../prisma.js', () => ({ default: mockPrisma }));
 
-const { default: router } = await import('../search.js');
+const { default: router, _resetFtsCache } = await import('../search.js');
 
 function buildApp(orgId = 'org-1') {
   const app = express();
@@ -187,5 +187,33 @@ describe('GET /api/search — FTS mode', () => {
     expect(res.status).toBe(200);
     // Should use FTS path (no findMany calls on prisma models)
     expect(mockPrisma.matter.findMany).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  hasTsvector catch branch (lines 21-22 in search.ts)                */
+/*  When prisma.$queryRaw throws, hasTsvector() returns false and      */
+/*  the search falls back to ILIKE mode.                               */
+/* ------------------------------------------------------------------ */
+describe('GET /api/search — hasTsvector catch branch', () => {
+  it('falls back to LIKE mode when hasTsvector() rejects (prisma.$queryRaw throws)', async () => {
+    // Reset the cached useFts so hasTsvector() is called again
+    _resetFtsCache();
+
+    // Make the tsvector-column check throw
+    mockPrisma.$queryRaw.mockRejectedValueOnce(new Error('relation does not exist'));
+
+    // Set up LIKE-mode findMany results
+    mockPrisma.matter.findMany.mockResolvedValue([{ id: 'm-fallback', title: 'Fallback', status: 'OPEN' }]);
+    mockPrisma.contract.findMany.mockResolvedValue([]);
+    mockPrisma.document.findMany.mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/?q=fallback&mode=fts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.matters).toHaveLength(1);
+    expect(res.body.matters[0].id).toBe('m-fallback');
+    // Confirms LIKE path was used (findMany called, not $queryRaw for FTS)
+    expect(mockPrisma.matter.findMany).toHaveBeenCalled();
   });
 });

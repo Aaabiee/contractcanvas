@@ -24,6 +24,9 @@ async function hasTsvector(): Promise<boolean> {
 
 let useFts: boolean | null = null;
 
+/** @internal — exposed only for unit-test seams; not part of the public API. */
+export function _resetFtsCache(): void { useFts = null; }
+
 async function shouldUseFts(): Promise<boolean> {
   if (useFts === null) useFts = await hasTsvector();
   return useFts;
