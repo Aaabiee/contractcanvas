@@ -230,3 +230,71 @@ describe('sse-registry.ts — closeSsePubSub (lines 68-71)', () => {
     await expect(mod.closeSsePubSub()).resolves.toBeUndefined();
   });
 });
+
+// ── removeClient + connectedUserCount (lines 42-45, 64-66) ───────────────
+describe('sse-registry.ts — removeClient and connectedUserCount', () => {
+  async function importNoRedis() {
+    delete process.env.REDIS_URL;
+    vi.doMock('ioredis', () => ({ Redis: vi.fn() }));
+    vi.doMock('../logger.js', () => ({
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    }));
+    return import('../sse-registry.js');
+  }
+
+  it('removeClient deletes the connection and cleans up empty sets (lines 42-45)', async () => {
+    const mod = await importNoRedis();
+    const res = { write: vi.fn() } as any;
+    mod.addClient('u1', res);
+    expect(mod.connectedUserCount()).toBe(1);
+
+    mod.removeClient('u1', res);
+    expect(mod.connectedUserCount()).toBe(0);
+  });
+
+  it('pushToUser writes to local clients when no Redis pub (lines 61-62)', async () => {
+    const mod = await importNoRedis();
+    const res = { write: vi.fn() } as any;
+    mod.addClient('u2', res);
+
+    mod.pushToUser('u2', 'test-event', { x: 1 });
+    expect(res.write).toHaveBeenCalledWith(expect.stringContaining('event: test-event'));
+  });
+
+  it('stale connection is removed on write error (line 22/52)', async () => {
+    const mod = await importNoRedis();
+    const badRes = { write: vi.fn(() => { throw new Error('closed'); }) } as any;
+    const goodRes = { write: vi.fn() } as any;
+    mod.addClient('u3', badRes);
+    mod.addClient('u3', goodRes);
+
+    mod.pushToUser('u3', 'evt', {});
+    expect(goodRes.write).toHaveBeenCalled();
+    expect(mod.connectedUserCount()).toBe(1);
+  });
+
+  it('sub.subscribe rejection triggers error log (line 22)', async () => {
+    process.env.REDIS_URL = 'redis://localhost:6379';
+    const mockSub = createMockRedis();
+    mockSub.subscribe = vi.fn().mockRejectedValue(new Error('sub failed'));
+    let count = 0;
+    vi.doMock('ioredis', () => ({
+      Redis: vi.fn().mockImplementation(() => {
+        count++;
+        return count === 1 ? createMockRedis() : mockSub;
+      }),
+    }));
+    const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    vi.doMock('../logger.js', () => ({ logger: mockLogger }));
+
+    const mod = await import('../sse-registry.js');
+    mod.initSsePubSub();
+
+    await vi.waitFor(() => {
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.any(Error) }),
+        'Failed to subscribe to SSE channel',
+      );
+    });
+  });
+});

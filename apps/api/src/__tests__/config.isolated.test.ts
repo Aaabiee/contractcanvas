@@ -289,3 +289,107 @@ describe('config.ts — config summary log (lines 180-188)', () => {
     expect(logCalls.some(m => m.includes('[Config] Loaded for env:'))).toBe(false);
   });
 });
+
+// ── Lines 50-51: dotenv.config when .env file exists ──────────────────────
+describe('config.ts — dotenv.config for api .env (lines 50-51)', () => {
+  it('calls dotenv.config when api .env file exists', async () => {
+    const dotenvConfig = vi.fn();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    setNonProdEnv();
+    vi.doMock('dotenv', () => ({ default: { config: dotenvConfig } }));
+    vi.doMock('node:fs', () => ({
+      default: {
+        existsSync: (p: string) => {
+          if (p.endsWith('.env')) return true;
+          return false;
+        },
+        readFileSync: () => { throw new Error('no config.json'); },
+      },
+    }));
+
+    await import('../config.js');
+    expect(dotenvConfig).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('.env') }));
+  });
+});
+
+// ── Lines 131-139: production JWT validation throws ───────────────────────
+describe('config.ts — validateProductionConfig (lines 131-153)', () => {
+  it('throws FATAL for default JWT_SECRET in production', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    setNonProdEnv();
+    mockDotenv();
+    mockFsWithConfig({});
+
+    const { validateProductionConfig, DEFAULT_JWT_SECRET } = await import('../config.js');
+    expect(() => validateProductionConfig({
+      env: 'production', jwtSecret: DEFAULT_JWT_SECRET,
+      stripeSecretKey: 'sk_live_real', s3Endpoint: undefined,
+    })).toThrow(/JWT_SECRET must be set/);
+  });
+
+  it('throws FATAL for short JWT_SECRET in production', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    setNonProdEnv();
+    mockDotenv();
+    mockFsWithConfig({});
+
+    const { validateProductionConfig } = await import('../config.js');
+    expect(() => validateProductionConfig({
+      env: 'production', jwtSecret: 'a'.repeat(32),
+      stripeSecretKey: 'sk_live_real', s3Endpoint: undefined,
+    })).toThrow(/64 characters/);
+  });
+
+  it('throws FATAL for placeholder Stripe key in production', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    setNonProdEnv();
+    mockDotenv();
+    mockFsWithConfig({});
+
+    const { validateProductionConfig } = await import('../config.js');
+    expect(() => validateProductionConfig({
+      env: 'production', jwtSecret: 'a'.repeat(64),
+      stripeSecretKey: 'sk_test_placeholder', s3Endpoint: undefined,
+    })).toThrow(/STRIPE_SECRET_KEY/);
+  });
+
+  it('throws FATAL for S3_ENDPOINT set in production', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    setNonProdEnv();
+    mockDotenv();
+    mockFsWithConfig({});
+
+    const { validateProductionConfig } = await import('../config.js');
+    expect(() => validateProductionConfig({
+      env: 'production', jwtSecret: 'a'.repeat(64),
+      stripeSecretKey: 'sk_live_real', s3Endpoint: 'http://localhost:9000',
+    })).toThrow(/S3_ENDPOINT/);
+  });
+});
+
+// ── Lines 157-160: short JWT warning in non-prod ──────────────────────────
+describe('config.ts — short JWT warning (lines 157-160)', () => {
+  it('warns when JWT_SECRET is under 32 chars in development', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    setNonProdEnv({ JWT_SECRET: 'short-secret-only-20!' });
+    mockDotenv();
+    mockFsWithConfig({});
+
+    await import('../config.js');
+
+    const warningCalls = warnSpy.mock.calls.map(c => String(c[0]));
+    expect(warningCalls.some(m => m.includes('at least 32 characters'))).toBe(true);
+  });
+});

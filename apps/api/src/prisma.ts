@@ -7,7 +7,7 @@ export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
     datasources: { db: { url: DATABASE_URL } },
-    log: ['warn', 'error'],
+    log: process.env.NODE_ENV === 'test' ? [] : ['warn', 'error'],
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
