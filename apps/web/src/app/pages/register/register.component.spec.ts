@@ -57,6 +57,14 @@ describe('RegisterComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('should render the ContractCanvas logo', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    const logo = compiled.querySelector('.logo-img') as HTMLImageElement;
+    expect(logo).toBeTruthy();
+    expect(logo.getAttribute('src')).toBe('logo.svg');
+    expect(logo.getAttribute('alt')).toBe('ContractCanvas');
+  });
+
   it('shows error when acceptTerms is false', () => {
     component.acceptTerms = false;
     component.onRegister();

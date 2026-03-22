@@ -69,12 +69,12 @@
 .logo-container {
   display: flex;
   justify-content: center;
-  margin-bottom: 12px;
-  color: var(--brand);
+  margin-bottom: 16px;
 }
 
-.logo-icon {
-  color: var(--brand);
+.logo-img {
+  height: 48px;
+  width: auto;
 }
 
 mat-card-title {

@@ -38,11 +38,12 @@
 .logo-container {
   display: flex;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
-.logo-icon {
-  color: var(--mat-primary-text-color, #3f51b5);
+.logo-img {
+  height: 48px;
+  width: auto;
 }
 
 mat-card-title {
