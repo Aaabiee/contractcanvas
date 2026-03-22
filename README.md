@@ -174,31 +174,53 @@ All routes are prefixed with `/api`. Protected routes require a `Bearer <JWT>` t
 
 ## Running Tests
 
-### Unit and route-level tests
+All commands can be run from the repository root.
 
-No external dependencies required:
+### API unit tests
 
-```bash
-cd apps/api
-npm test
-```
-
-### Integration tests
-
-Requires Docker — testcontainers spins up real PostgreSQL:
+No external dependencies required (1033 tests):
 
 ```bash
-cd apps/api
-npm run test:integration
+npm run test -w apps/api
 ```
 
-Integration tests live in `apps/api/src/__tests__/integration/` and use `@testcontainers/postgresql` to provision an isolated database per test suite. No mocking of the database or Redis.
+### API integration tests
+
+Requires Docker — testcontainers spins up real PostgreSQL, MinIO, and Redis:
+
+```bash
+npm run test:integration -w apps/api
+```
+
+Integration tests live in `apps/api/src/__tests__/integration/` and use `@testcontainers/postgresql` to provision an isolated database per test suite. No mocking of the database, S3, or Redis.
 
 ### Frontend unit tests
 
+No external dependencies required (530 tests):
+
 ```bash
-cd apps/web
-npm test
+npx jest --watchAll=false --config apps/web/jest.config.js
+```
+
+### Coverage reports
+
+```bash
+# API coverage (unit + isolated env tests)
+npm run test:coverage -w apps/api
+
+# Frontend coverage
+npx jest --watchAll=false --coverage --config apps/web/jest.config.js
+
+# API integration coverage
+npm run test:integration:coverage -w apps/api
+```
+
+### E2E tests (Playwright)
+
+Requires the API and web dev servers running:
+
+```bash
+npm run test:e2e
 ```
 
 ## Docker / Production Deployment
