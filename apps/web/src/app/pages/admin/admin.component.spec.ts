@@ -148,4 +148,84 @@ describe('AdminComponent', () => {
     expect(component.loading()).toBe(false);
     expect(component.members()).toHaveLength(0);
   });
+
+  it('getMyOrganizations error is caught and sets loading false (line 350)', () => {
+    orgService.getMyOrganizations.mockReturnValue(throwError(() => new Error('network')));
+    component.loading.set(true);
+    component.ngOnInit();
+    expect(component.loading()).toBe(false);
+  });
+
+  it('forkJoin catchError branches handle individual service failures (lines 358-362)', () => {
+    const matterService   = TestBed.inject(MatterService)   as unknown as { getMatters: jest.Mock };
+    const contractService = TestBed.inject(ContractService) as unknown as { getContracts: jest.Mock };
+
+    matterService.getMatters.mockReturnValue(throwError(() => new Error('fail')));
+    contractService.getContracts.mockReturnValue(throwError(() => new Error('fail')));
+    orgService.getMembers.mockReturnValue(throwError(() => new Error('fail')));
+
+    component.loading.set(true);
+    component.ngOnInit();
+    expect(component.loading()).toBe(false);
+    expect(component.members()).toEqual([]);
+    expect(component.openMatters()).toBe(0);
+    expect(component.totalContracts()).toBe(0);
+  });
+
+  it('loadAuditLogs error sets auditLoading to false (line 403)', () => {
+    const auditService = TestBed.inject(AuditLogService) as unknown as { getLogs: jest.Mock };
+    auditService.getLogs.mockReturnValue(throwError(() => new Error('fail')));
+    component.auditLoading.set(true);
+    component.loadAuditLogs();
+    expect(component.auditLoading()).toBe(false);
+  });
+
+  it('onAuditPage updates pageSize and calls loadAuditLogs with offset (lines 407-410)', () => {
+    const auditService = TestBed.inject(AuditLogService) as unknown as { getLogs: jest.Mock };
+    auditService.getLogs.mockReturnValue(of({ data: [], total: 100, limit: 50, offset: 50 }));
+    component.onAuditPage({ pageIndex: 1, pageSize: 50, length: 100 });
+    expect(component.auditPageSize).toBe(50);
+    expect(auditService.getLogs).toHaveBeenCalledWith('org1', expect.objectContaining({ offset: 50, limit: 50 }));
+  });
+
+  it('exportAuditCsv creates download link and clicks it (lines 412-421)', () => {
+    const auditService = TestBed.inject(AuditLogService) as unknown as { exportCsv: jest.Mock };
+    const mockBlob = new Blob(['csv data'], { type: 'text/csv' });
+    auditService.exportCsv.mockReturnValue(of(mockBlob));
+
+    const mockUrl = 'blob:http://localhost/fake';
+    (globalThis as any).URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
+    (globalThis as any).URL.revokeObjectURL = jest.fn();
+    const clickSpy = jest.fn();
+    const origCreateElement = document.createElement.bind(document);
+    jest.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'a') return { href: '', download: '', click: clickSpy } as any;
+      return origCreateElement(tag);
+    });
+
+    component.exportAuditCsv();
+
+    expect(auditService.exportCsv).toHaveBeenCalledWith('org1');
+    expect((globalThis as any).URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+    expect(clickSpy).toHaveBeenCalled();
+    expect((globalThis as any).URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
+
+    (document.createElement as jest.Mock).mockRestore();
+  });
+
+  it('exportAuditCsv does nothing when orgId is empty', () => {
+    const auditService = TestBed.inject(AuditLogService) as unknown as { exportCsv: jest.Mock };
+    component.orgId.set('');
+    auditService.exportCsv.mockClear();
+    component.exportAuditCsv();
+    expect(auditService.exportCsv).not.toHaveBeenCalled();
+  });
+
+  it('loadAuditLogs does nothing when orgId is empty', () => {
+    const auditService = TestBed.inject(AuditLogService) as unknown as { getLogs: jest.Mock };
+    component.orgId.set('');
+    auditService.getLogs.mockClear();
+    component.loadAuditLogs();
+    expect(auditService.getLogs).not.toHaveBeenCalled();
+  });
 });

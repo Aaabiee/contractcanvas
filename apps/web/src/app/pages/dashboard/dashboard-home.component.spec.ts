@@ -21,6 +21,7 @@ const emptyNotifPage = { data: [], total: 0, unreadCount: 0, limit: 1, offset: 0
 class MockAuthService {
   currentUser = mockCurrentUser;
   logout = jest.fn();
+  resendVerification = jest.fn(() => of({ ok: true }));
 }
 
 class MockMatterService {
@@ -231,5 +232,61 @@ describe('DashboardHomeComponent', () => {
     const navSpy = jest.spyOn(router, 'navigate');
     component.goStatCard({ value: 0, link: '/matters' });
     expect(navSpy).not.toHaveBeenCalled();
+  });
+
+  it('resendVerification calls authService.resendVerification and sets state to sent (lines 122-127)', () => {
+    const authService = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockCurrentUser.set({ id: 'u1', email: 'test@test.com', emailVerified: false });
+    component.resendState.set('idle');
+    component.resendVerification();
+    expect(authService.resendVerification).toHaveBeenCalledWith('test@test.com');
+    expect(component.resendState()).toBe('sent');
+  });
+
+  it('resendVerification does nothing when email is missing (line 123)', () => {
+    const authService = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockCurrentUser.set(null);
+    authService.resendVerification.mockClear();
+    component.resendVerification();
+    expect(authService.resendVerification).not.toHaveBeenCalled();
+  });
+
+  it('resendVerification does nothing when state is not idle (line 123)', () => {
+    const authService = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockCurrentUser.set({ id: 'u1', email: 'test@test.com' });
+    component.resendState.set('sending');
+    authService.resendVerification.mockClear();
+    component.resendVerification();
+    expect(authService.resendVerification).not.toHaveBeenCalled();
+  });
+
+  it('resendVerification error resets state to idle (line 127)', () => {
+    const authService = TestBed.inject(AuthService) as unknown as MockAuthService;
+    authService.resendVerification.mockReturnValue(throwError(() => new Error('fail')));
+    mockCurrentUser.set({ id: 'u1', email: 'test@test.com' });
+    component.resendState.set('idle');
+    component.resendVerification();
+    expect(component.resendState()).toBe('idle');
+  });
+
+  it('displayName returns firstName when available (lines 134-135)', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com', firstName: 'Alice' });
+    expect(component.displayName()).toBe('Alice');
+  });
+
+  it('displayName returns empty string when no user (line 133)', () => {
+    mockCurrentUser.set(null);
+    expect(component.displayName()).toBe('');
+  });
+
+  it('displayName prefers name.displayName over firstName (line 135)', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com', name: { displayName: 'Bob D' }, firstName: 'Bob' });
+    expect(component.displayName()).toBe('Bob D');
+  });
+
+  it('goTo navigates to the given path (line 231)', () => {
+    const navSpy = jest.spyOn(router, 'navigate');
+    component.goTo('/contracts');
+    expect(navSpy).toHaveBeenCalledWith(['/contracts']);
   });
 });

@@ -9,6 +9,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
+import { WebhookService } from '../../services/webhook.service';
+import { ApiKeyService } from '../../services/api-key.service';
 
 const mockOrgs = [{ id: 'org-1', name: 'Acme Law', slug: 'acme-law', createdAt: new Date().toISOString() }];
 const mockMembers = [
@@ -156,5 +158,190 @@ describe('OrganizationSettingsComponent', () => {
     component.retentionDays.setValue(0);
     component.saveRetention();
     expect(snackMock.open).not.toHaveBeenCalled();
+  });
+
+  // ── Coverage: lines 346-374 (webhook CRUD) ──
+
+  describe('webhook CRUD', () => {
+    let whService: jest.Mocked<WebhookService>;
+
+    beforeEach(() => {
+      whService = TestBed.inject(WebhookService) as jest.Mocked<WebhookService>;
+    });
+
+    it('createWebhook adds webhook to list and shows secret', () => {
+      const created = { id: 'wh-1', url: 'https://example.com/hook', events: ['matter.created'], isActive: true, secret: 'sec-123' };
+      whService.create.mockReturnValue(of(created as any));
+
+      component.webhookForm.setValue({ url: 'https://example.com/hook', events: ['matter.created'] });
+      component.createWebhook();
+
+      expect(whService.create).toHaveBeenCalledWith('org-1', { url: 'https://example.com/hook', events: ['matter.created'] });
+      expect(component.webhooks()).toContainEqual(created);
+      expect(component.newWebhookSecret()).toBe('sec-123');
+      expect(snackMock.open).toHaveBeenCalledWith('Webhook created.', 'OK', expect.any(Object));
+    });
+
+    it('createWebhook does nothing when form is invalid', () => {
+      component.webhookForm.setValue({ url: '', events: [] });
+      component.createWebhook();
+      expect(whService.create).not.toHaveBeenCalled();
+    });
+
+    it('createWebhook shows error snackbar on failure', () => {
+      whService.create.mockReturnValue(throwError(() => ({ error: { error: 'Bad URL' } })));
+      component.webhookForm.setValue({ url: 'https://bad.com', events: ['matter.created'] });
+      component.createWebhook();
+      expect(snackMock.open).toHaveBeenCalledWith('Bad URL', 'Dismiss', expect.any(Object));
+    });
+
+    it('createWebhook shows fallback error when no server message', () => {
+      whService.create.mockReturnValue(throwError(() => ({})));
+      component.webhookForm.setValue({ url: 'https://bad.com', events: ['matter.created'] });
+      component.createWebhook();
+      expect(snackMock.open).toHaveBeenCalledWith('Failed.', 'Dismiss', expect.any(Object));
+    });
+
+    it('toggleWebhook updates the webhook in the list', () => {
+      const wh = { id: 'wh-1', url: 'https://example.com', events: ['matter.created'], isActive: true };
+      component.webhooks.set([wh as any]);
+      const updated = { ...wh, isActive: false };
+      whService.update.mockReturnValue(of(updated as any));
+
+      component.toggleWebhook(wh as any);
+
+      expect(whService.update).toHaveBeenCalledWith('org-1', 'wh-1', { isActive: false });
+      expect(component.webhooks()[0].isActive).toBe(false);
+    });
+
+    it('toggleWebhook shows error snackbar on failure', () => {
+      const wh = { id: 'wh-1', url: 'https://example.com', events: ['matter.created'], isActive: true };
+      component.webhooks.set([wh as any]);
+      whService.update.mockReturnValue(throwError(() => new Error('fail')));
+
+      component.toggleWebhook(wh as any);
+      expect(snackMock.open).toHaveBeenCalledWith('Failed to toggle.', 'Dismiss', expect.any(Object));
+    });
+
+    it('deleteWebhook removes webhook from the list', () => {
+      const wh = { id: 'wh-1', url: 'https://example.com', events: ['matter.created'], isActive: true };
+      component.webhooks.set([wh as any]);
+      whService.remove.mockReturnValue(of(undefined as any));
+
+      component.deleteWebhook(wh as any);
+
+      expect(whService.remove).toHaveBeenCalledWith('org-1', 'wh-1');
+      expect(component.webhooks()).toHaveLength(0);
+      expect(snackMock.open).toHaveBeenCalledWith('Deleted.', 'OK', expect.any(Object));
+    });
+
+    it('deleteWebhook shows error snackbar on failure', () => {
+      const wh = { id: 'wh-1', url: 'https://example.com', events: ['matter.created'], isActive: true };
+      component.webhooks.set([wh as any]);
+      whService.remove.mockReturnValue(throwError(() => new Error('fail')));
+
+      component.deleteWebhook(wh as any);
+      expect(snackMock.open).toHaveBeenCalledWith('Failed.', 'Dismiss', expect.any(Object));
+    });
+
+    it('loadWebhooks sets webhooks on success', () => {
+      const data = [{ id: 'wh-1', url: 'https://x.com', events: ['matter.created'], isActive: true }];
+      whService.list.mockReturnValue(of({ data } as any));
+
+      component.loadWebhooks();
+
+      expect(component.webhooksLoading()).toBe(false);
+      expect(component.webhooks()).toEqual(data);
+    });
+
+    it('loadWebhooks resets loading on error', () => {
+      whService.list.mockReturnValue(throwError(() => new Error('fail')));
+
+      component.loadWebhooks();
+
+      expect(component.webhooksLoading()).toBe(false);
+    });
+  });
+
+  // ── Coverage: lines 382-402 (API key management) ──
+
+  describe('API key management', () => {
+    let akService: jest.Mocked<ApiKeyService>;
+
+    beforeEach(() => {
+      akService = TestBed.inject(ApiKeyService) as jest.Mocked<ApiKeyService>;
+    });
+
+    it('createApiKey adds key to list and shows rawKey', () => {
+      const created = { id: 'ak-1', name: 'CI Key', prefix: 'cc_', rawKey: 'cc_abc123', lastUsedAt: null };
+      akService.create.mockReturnValue(of(created as any));
+      component.apiKeyName.setValue('CI Key');
+
+      component.createApiKey();
+
+      expect(akService.create).toHaveBeenCalledWith('org-1', 'CI Key');
+      expect(component.apiKeys()).toContainEqual(created);
+      expect(component.newRawKey()).toBe('cc_abc123');
+      expect(snackMock.open).toHaveBeenCalledWith('API key created.', 'OK', expect.any(Object));
+    });
+
+    it('createApiKey does nothing when apiKeyName is invalid', () => {
+      component.apiKeyName.setValue('');
+      component.createApiKey();
+      expect(akService.create).not.toHaveBeenCalled();
+    });
+
+    it('createApiKey shows error snackbar on failure', () => {
+      akService.create.mockReturnValue(throwError(() => ({ error: { error: 'Limit reached' } })));
+      component.apiKeyName.setValue('Key');
+      component.createApiKey();
+      expect(snackMock.open).toHaveBeenCalledWith('Limit reached', 'Dismiss', expect.any(Object));
+    });
+
+    it('createApiKey shows fallback error when no server message', () => {
+      akService.create.mockReturnValue(throwError(() => ({})));
+      component.apiKeyName.setValue('Key');
+      component.createApiKey();
+      expect(snackMock.open).toHaveBeenCalledWith('Failed.', 'Dismiss', expect.any(Object));
+    });
+
+    it('revokeApiKey removes key from the list', () => {
+      const key = { id: 'ak-1', name: 'CI Key', prefix: 'cc_', lastUsedAt: null };
+      component.apiKeys.set([key as any]);
+      akService.revoke.mockReturnValue(of(undefined as any));
+
+      component.revokeApiKey(key as any);
+
+      expect(akService.revoke).toHaveBeenCalledWith('org-1', 'ak-1');
+      expect(component.apiKeys()).toHaveLength(0);
+      expect(snackMock.open).toHaveBeenCalledWith('Revoked.', 'OK', expect.any(Object));
+    });
+
+    it('revokeApiKey shows error snackbar on failure', () => {
+      const key = { id: 'ak-1', name: 'CI Key', prefix: 'cc_', lastUsedAt: null };
+      component.apiKeys.set([key as any]);
+      akService.revoke.mockReturnValue(throwError(() => new Error('fail')));
+
+      component.revokeApiKey(key as any);
+      expect(snackMock.open).toHaveBeenCalledWith('Failed.', 'Dismiss', expect.any(Object));
+    });
+
+    it('loadApiKeys sets apiKeys on success', () => {
+      const data = [{ id: 'ak-1', name: 'CI', prefix: 'cc_', lastUsedAt: null }];
+      akService.list.mockReturnValue(of({ data } as any));
+
+      component.loadApiKeys();
+
+      expect(component.apiKeysLoading()).toBe(false);
+      expect(component.apiKeys()).toEqual(data);
+    });
+
+    it('loadApiKeys resets loading on error', () => {
+      akService.list.mockReturnValue(throwError(() => new Error('fail')));
+
+      component.loadApiKeys();
+
+      expect(component.apiKeysLoading()).toBe(false);
+    });
   });
 });

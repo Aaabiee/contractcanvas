@@ -120,4 +120,109 @@ describe('OnboardingComponent', () => {
     tick();
     expect(router.navigate).toHaveBeenCalledWith(['/dashboard']);
   }));
+
+  // ── Coverage: line 153 (onStepSelect) ──
+
+  it('onStepSelect sets stepIndex to the given index', fakeAsync(() => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/users/me').flush({ onboardingStep: 'VERIFY_EMAIL' });
+    tick();
+
+    component.onStepSelect(3);
+    expect(component.stepIndex()).toBe(3);
+  }));
+
+  // ── Coverage: line 162 (advance error) ──
+
+  it('advance shows snackbar when PATCH fails', fakeAsync(() => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/users/me').flush({ onboardingStep: 'VERIFY_EMAIL', emailVerifiedAt: '2024-01-01' });
+    tick();
+
+    component.advance('CUSTOMIZE_ORG');
+    httpMock.expectOne('/api/users/me/onboarding').flush('fail', { status: 500, statusText: 'Error' });
+    tick();
+    expect(snack.open).toHaveBeenCalledWith('Failed to update progress.', 'Dismiss', expect.any(Object));
+  }));
+
+  // ── Coverage: line 174 (createMatter error) ──
+
+  it('createMatter shows snackbar on failure and resets saving', fakeAsync(() => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/users/me').flush({ onboardingStep: 'CREATE_MATTER', emailVerifiedAt: '2024-01-01' });
+    tick();
+
+    component.matterTitle.setValue('Test');
+    component.createMatter();
+    expect(component.saving()).toBe(true);
+
+    httpMock.expectOne('/api/matters').flush('fail', { status: 500, statusText: 'Error' });
+    tick();
+
+    expect(component.saving()).toBe(false);
+    expect(snack.open).toHaveBeenCalledWith('Failed.', 'Dismiss', expect.any(Object));
+  }));
+
+  // ── Coverage: lines 178-197 (inviteMember) ──
+
+  it('inviteMember sends invite when orgs exist', fakeAsync(() => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/users/me').flush({ onboardingStep: 'INVITE_MEMBER', emailVerifiedAt: '2024-01-01' });
+    tick();
+
+    component.inviteEmail.setValue('colleague@firm.com');
+    component.inviteMember();
+    expect(component.saving()).toBe(true);
+
+    const orgsReq = httpMock.expectOne('/api/organizations/me');
+    orgsReq.flush([{ id: 'org-1', name: 'Test Org' }]);
+    tick();
+
+    const memberReq = httpMock.expectOne('/api/organizations/org-1/members');
+    expect(memberReq.request.method).toBe('POST');
+    expect(memberReq.request.body.email).toBe('colleague@firm.com');
+    memberReq.flush({ id: 'mem-1' });
+    tick();
+
+    expect(component.saving()).toBe(false);
+    expect(snack.open).toHaveBeenCalledWith('Invite sent!', 'OK', expect.any(Object));
+
+    // Drain the advance PATCH triggered by inviteMember success
+    httpMock.expectOne('/api/users/me/onboarding').flush({});
+    tick();
+  }));
+
+  it('inviteMember resets saving when no orgs returned', fakeAsync(() => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/users/me').flush({ onboardingStep: 'INVITE_MEMBER', emailVerifiedAt: '2024-01-01' });
+    tick();
+
+    component.inviteEmail.setValue('colleague@firm.com');
+    component.inviteMember();
+
+    httpMock.expectOne('/api/organizations/me').flush([]);
+    tick();
+
+    expect(component.saving()).toBe(false);
+  }));
+
+  it('inviteMember advances even when invite POST fails', fakeAsync(() => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/users/me').flush({ onboardingStep: 'INVITE_MEMBER', emailVerifiedAt: '2024-01-01' });
+    tick();
+
+    component.inviteEmail.setValue('colleague@firm.com');
+    component.inviteMember();
+
+    httpMock.expectOne('/api/organizations/me').flush([{ id: 'org-1', name: 'Test' }]);
+    tick();
+
+    httpMock.expectOne('/api/organizations/org-1/members').flush('fail', { status: 500, statusText: 'Error' });
+    tick();
+
+    expect(component.saving()).toBe(false);
+    // Should still advance to UPLOAD_DOCUMENT
+    httpMock.expectOne('/api/users/me/onboarding').flush({});
+    tick();
+  }));
 });

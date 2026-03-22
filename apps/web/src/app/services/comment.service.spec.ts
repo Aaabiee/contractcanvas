@@ -64,4 +64,52 @@ describe('CommentService', () => {
     expect(req.request.method).toBe('DELETE');
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
+
+  // ── Coverage: lines 56-59 (contractVersionId, documentId, limit, offset params) ──
+
+  it('getComments sends contractVersionId query param', () => {
+    service.getComments({ contractVersionId: 'cv1' }).subscribe();
+    const req = http.expectOne(r => r.url === '/api/comments' && r.params.get('contractVersionId') === 'cv1');
+    expect(req.request.method).toBe('GET');
+    req.flush({ data: [], total: 0, limit: 100, offset: 0 });
+  });
+
+  it('getComments sends documentId query param', () => {
+    service.getComments({ documentId: 'd1' }).subscribe();
+    const req = http.expectOne(r => r.url === '/api/comments' && r.params.get('documentId') === 'd1');
+    expect(req.request.method).toBe('GET');
+    req.flush({ data: [], total: 0, limit: 100, offset: 0 });
+  });
+
+  it('getComments sends limit and offset query params', () => {
+    service.getComments({ matterId: 'm1', limit: 10, offset: 20 }).subscribe();
+    const req = http.expectOne(r =>
+      r.url === '/api/comments' &&
+      r.params.get('limit') === '10' &&
+      r.params.get('offset') === '20'
+    );
+    expect(req.request.method).toBe('GET');
+    req.flush({ data: [], total: 0, limit: 10, offset: 20 });
+  });
+
+  it('getComments sends all params together', () => {
+    service.getComments({
+      matterId: 'm1',
+      contractId: 'ct1',
+      documentId: 'd1',
+      contractVersionId: 'cv1',
+      limit: 5,
+      offset: 10,
+    }).subscribe();
+    const req = http.expectOne(r =>
+      r.url === '/api/comments' &&
+      r.params.get('matterId') === 'm1' &&
+      r.params.get('contractId') === 'ct1' &&
+      r.params.get('documentId') === 'd1' &&
+      r.params.get('contractVersionId') === 'cv1' &&
+      r.params.get('limit') === '5' &&
+      r.params.get('offset') === '10'
+    );
+    req.flush({ data: [], total: 0, limit: 5, offset: 10 });
+  });
 });

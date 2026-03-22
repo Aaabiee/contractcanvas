@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { CommentsComponent } from './comments.component';
 import { CommentService, Comment } from '../../services/comment.service';
 import { AuthService } from '../../services/auth.service';
@@ -36,8 +37,11 @@ describe('CommentsComponent', () => {
   let fixture: ComponentFixture<CommentsComponent>;
   let component: CommentsComponent;
   let commentService: MockCommentService;
+  let snackBar: { open: jest.Mock };
 
   beforeEach(async () => {
+    snackBar = { open: jest.fn() };
+
     await TestBed.configureTestingModule({
       imports: [CommentsComponent, NoopAnimationsModule],
       providers: [
@@ -47,7 +51,11 @@ describe('CommentsComponent', () => {
         { provide: CommentService, useClass: MockCommentService },
         { provide: AuthService, useClass: MockAuthService },
       ],
-    }).compileComponents();
+    })
+      .overrideComponent(CommentsComponent, {
+        add: { providers: [{ provide: MatSnackBar, useValue: snackBar }] },
+      })
+      .compileComponents();
 
     fixture       = TestBed.createComponent(CommentsComponent);
     component     = fixture.componentInstance;
@@ -113,5 +121,37 @@ describe('CommentsComponent', () => {
     component.load();
     expect(commentService.getComments).not.toHaveBeenCalled();
     expect(component.loading()).toBe(false);
+  });
+
+  it('handles load error by setting loading to false (line 141)', () => {
+    commentService.getComments.mockReturnValue(throwError(() => new Error('network')));
+    component.loading.set(true);
+    component.load();
+    expect(component.loading()).toBe(false);
+  });
+
+  it('handles submitComment error by resetting submitting and showing snackbar (lines 159-160)', () => {
+    commentService.createComment.mockReturnValue(throwError(() => new Error('fail')));
+    component.newBody = 'Test comment';
+    component.submitComment();
+    expect(component.submitting()).toBe(false);
+    expect(snackBar.open).toHaveBeenCalledWith('Could not post comment.', 'Dismiss', expect.any(Object));
+  });
+
+  it('handles saveEdit error by showing snackbar (line 182)', () => {
+    commentService.updateComment.mockReturnValue(throwError(() => new Error('fail')));
+    component.startEdit(mockComments[0]);
+    component.editBody = 'Updated body';
+    component.saveEdit('c1');
+    expect(component.editingId()).toBe('c1'); // editing state not cleared on error
+    expect(snackBar.open).toHaveBeenCalledWith('Could not update comment.', 'Dismiss', expect.any(Object));
+  });
+
+  it('handles deleteComment error by showing snackbar (line 189)', () => {
+    commentService.deleteComment.mockReturnValue(throwError(() => new Error('fail')));
+    component.comments.set([...mockComments]);
+    component.deleteComment('c1');
+    expect(component.comments()).toHaveLength(1); // comment not removed on error
+    expect(snackBar.open).toHaveBeenCalledWith('Could not delete comment.', 'Dismiss', expect.any(Object));
   });
 });

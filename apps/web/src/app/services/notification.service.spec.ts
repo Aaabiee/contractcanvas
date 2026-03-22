@@ -175,5 +175,34 @@ describe('NotificationService', () => {
       mockEs!.dispatchEvent('notification', JSON.stringify({ id: 'n1', title: 'Hello' }));
       expect(cb).toHaveBeenCalledWith(expect.objectContaining({ id: 'n1' }));
     });
+
+    // ── Coverage: lines 49-51 (onerror handler reconnect) ──
+
+    it('onerror closes the EventSource and reconnects after timeout', () => {
+      jest.useFakeTimers();
+      service.startStream();
+      const firstEs = mockEs!;
+
+      // Trigger the onerror handler
+      firstEs.onerror!(new Event('error'));
+
+      // EventSource should be closed
+      expect(firstEs.readyState).toBe(MockEventSource.CLOSED);
+
+      // After 5 seconds, it should reconnect (creating a new EventSource)
+      jest.advanceTimersByTime(5000);
+      expect(mockEs).not.toBe(firstEs);
+      expect(mockEs!.url).toBe('/api/events/stream');
+
+      jest.useRealTimers();
+    });
+
+    it('notification event increments unreadCount even with malformed JSON', () => {
+      service.unreadCount.set(2);
+      service.startStream();
+      // Malformed JSON — the catch block ignores it, but unreadCount still increments
+      mockEs!.dispatchEvent('notification', 'not-valid-json');
+      expect(service.unreadCount()).toBe(3);
+    });
   });
 });

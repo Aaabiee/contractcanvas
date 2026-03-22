@@ -200,4 +200,28 @@ describe('ContractDetailComponent', () => {
     expect(component.generatingPdf()).toBe(false);
     httpMock.verify();
   });
+
+  it('sendForSignature error resets sendingSig and shows snackbar (lines 104-106)', async () => {
+    await setup();
+    fixture.detectChanges();
+    const httpMock = TestBed.inject(HttpTestingController);
+    component.sendForSignature('c1');
+    expect(component.sendingSig()).toBe(true);
+    const req = httpMock.expectOne('/api/signatures');
+    req.flush({ error: 'No recipients' }, { status: 400, statusText: 'Bad Request' });
+    expect(component.sendingSig()).toBe(false);
+    httpMock.verify();
+  });
+
+  it('generatePdf error resets generatingPdf and shows snackbar (lines 123-125)', async () => {
+    await setup();
+    fixture.detectChanges();
+    const httpMock = TestBed.inject(HttpTestingController);
+    component.generatePdf('c1');
+    expect(component.generatingPdf()).toBe(true);
+    const req = httpMock.expectOne('/api/contracts/c1/generate-pdf');
+    req.error(new ProgressEvent('error'), { status: 500, statusText: 'Server Error' });
+    expect(component.generatingPdf()).toBe(false);
+    httpMock.verify();
+  });
 });

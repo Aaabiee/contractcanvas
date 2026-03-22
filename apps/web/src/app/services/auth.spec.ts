@@ -290,3 +290,204 @@ describe('AuthService constructor — silent refresh', () => {
     http.verify();
   }));
 });
+
+// ── verifyEmail, resendVerification, forgotPassword, resetPassword ──────────
+
+describe('AuthService — additional methods', () => {
+  let service: AuthService;
+  let httpMock: HttpTestingController;
+  let router: Router;
+
+  beforeEach(
+    fakeAsync(() => {
+      TestBed.configureTestingModule({
+        imports: [HttpClientTestingModule],
+        providers: [
+          provideRouter([{ path: 'login', component: class DummyLogin {} }]),
+          AuthService,
+        ],
+      });
+
+      service  = TestBed.inject(AuthService);
+      httpMock = TestBed.inject(HttpTestingController);
+      router   = TestBed.inject(Router);
+
+      jest.spyOn(service as any, 'scheduleRefresh').mockImplementation(() => {});
+      flushSilentRefreshFailure(httpMock);
+      tick();
+    }),
+  );
+
+  afterEach(() => {
+    (service as any).cancelRefreshTimer();
+    httpMock.verify();
+  });
+
+  // ── verifyEmail (lines 166-181) ──
+
+  it('verifyEmail stores token and calls getMe when token is present', fakeAsync(() => {
+    const jwt = makeFakeJwt('u5');
+    service.verifyEmail('some-verify-token').subscribe();
+
+    const req = httpMock.expectOne(r => r.url.includes('/api/auth/verify-email'));
+    expect(req.request.method).toBe('GET');
+    req.flush({ ok: true, token: jwt });
+    tick();
+
+    // After setting the token, verifyEmail calls getMe
+    httpMock.expectOne('/api/auth/me').flush(mockUser);
+    tick();
+
+    expect(service.getToken()).toBe(jwt);
+    expect(service.currentUser()).toEqual(mockUser);
+  }));
+
+  it('verifyEmail returns result without calling getMe when no token', fakeAsync(() => {
+    let result: any;
+    service.verifyEmail('some-token').subscribe(r => (result = r));
+
+    httpMock.expectOne(r => r.url.includes('/api/auth/verify-email')).flush({ ok: true });
+    tick();
+
+    httpMock.expectNone('/api/auth/me');
+    expect(result).toEqual({ ok: true });
+  }));
+
+  // ── resendVerification (lines 184-189) ──
+
+  it('resendVerification sends POST with email', fakeAsync(() => {
+    service.resendVerification('a@b.com').subscribe();
+    const req = httpMock.expectOne('/api/auth/resend-verification');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'a@b.com' });
+    req.flush({ ok: true });
+    tick();
+  }));
+
+  // ── forgotPassword (lines 192-196) ──
+
+  it('forgotPassword sends POST with email', fakeAsync(() => {
+    let result: any;
+    service.forgotPassword('forgot@test.com').subscribe(r => (result = r));
+    const req = httpMock.expectOne('/api/auth/forgot-password');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'forgot@test.com' });
+    req.flush({ ok: true });
+    tick();
+    expect(result).toEqual({ ok: true });
+  }));
+
+  // ── resetPassword (lines 199-203) ──
+
+  it('resetPassword sends POST with token and newPassword', fakeAsync(() => {
+    let result: any;
+    service.resetPassword('reset-tok', 'NewPass1!').subscribe(r => (result = r));
+    const req = httpMock.expectOne('/api/auth/reset-password');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ token: 'reset-tok', newPassword: 'NewPass1!' });
+    req.flush({ ok: true });
+    tick();
+    expect(result).toEqual({ ok: true });
+  }));
+
+  // ── emailVerified() (line 163) ──
+
+  it('emailVerified returns false when no current user', () => {
+    expect(service.emailVerified()).toBe(false);
+  });
+
+  it('emailVerified returns true when currentUser has emailVerified', fakeAsync(() => {
+    service.login({ email: 'a@b.com', password: 'pass' }).subscribe();
+    httpMock.expectOne('/api/auth/login').flush({
+      token: makeFakeJwt(),
+      user: { ...mockUser, emailVerified: true },
+    });
+    tick();
+    expect(service.emailVerified()).toBe(true);
+  }));
+});
+
+// ── scheduleRefresh edge cases ──────────────────────────────────────────────
+
+describe('AuthService — scheduleRefresh', () => {
+  let service: AuthService;
+  let httpMock: HttpTestingController;
+  let router: Router;
+
+  beforeEach(
+    fakeAsync(() => {
+      TestBed.configureTestingModule({
+        imports: [HttpClientTestingModule],
+        providers: [
+          provideRouter([
+            { path: 'login', component: class DummyLogin {} },
+          ]),
+          AuthService,
+        ],
+      });
+
+      service  = TestBed.inject(AuthService);
+      httpMock = TestBed.inject(HttpTestingController);
+      router   = TestBed.inject(Router);
+
+      // Drain constructor silentRefresh
+      flushSilentRefreshFailure(httpMock);
+      tick();
+    }),
+  );
+
+  afterEach(() => {
+    (service as any).cancelRefreshTimer();
+    httpMock.verify();
+  });
+
+  it('triggers immediate silentRefresh when token is about to expire (refreshIn <= 0)', fakeAsync(() => {
+    // Create a JWT that expires in the past (so refreshIn <= 0)
+    const exp     = Math.floor(Date.now() / 1000) - 10; // 10s ago
+    const header  = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+    const payload = btoa(JSON.stringify({ sub: 'u1', exp }));
+    const expiredJwt = `${header}.${payload}.sig`;
+
+    // Call scheduleRefresh directly (it's private, so use bracket notation)
+    (service as any).scheduleRefresh(expiredJwt);
+
+    // Should have triggered silentRefresh immediately — flush it
+    httpMock.expectOne('/api/auth/refresh-token').flush(
+      { error: 'expired' }, { status: 401, statusText: 'Unauthorized' },
+    );
+    tick();
+  }));
+
+  it('calls logout when token is malformed (scheduleRefresh catch block)', fakeAsync(() => {
+    jest.spyOn(router, 'navigate').mockResolvedValue(true);
+    const logoutSpy = jest.spyOn(service, 'logout');
+
+    // A completely malformed JWT that will cause JSON.parse(atob(...)) to throw
+    (service as any).scheduleRefresh('not.a.jwt');
+
+    expect(logoutSpy).toHaveBeenCalled();
+
+    // Drain the fire-and-forget logout POST
+    httpMock.expectOne('/api/auth/logout').flush({ ok: true });
+    tick();
+  }));
+
+  it('schedules a timer-based silentRefresh when token has valid future expiry', fakeAsync(() => {
+    // Create a JWT that expires 62 seconds from now (refreshIn = 2000ms)
+    const exp    = Math.floor(Date.now() / 1000) + 62;
+    const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+    const payload = btoa(JSON.stringify({ sub: 'u1', exp }));
+    const jwt = `${header}.${payload}.sig`;
+
+    (service as any).scheduleRefresh(jwt);
+
+    // Advance past the timer (refreshIn ~= 2000ms)
+    tick(3000);
+
+    // The timer should have triggered silentRefresh — flush it
+    httpMock.expectOne('/api/auth/refresh-token').flush(
+      { error: 'expired' }, { status: 401, statusText: 'Unauthorized' },
+    );
+    tick();
+  }));
+});

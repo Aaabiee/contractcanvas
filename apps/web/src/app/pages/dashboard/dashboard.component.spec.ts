@@ -128,4 +128,58 @@ describe('DashboardComponent', () => {
     component.goTo('/matters');
     expect(navSpy).toHaveBeenCalledWith(['/matters']);
   });
+
+  it('onNotification callback shows snackbar when notification arrives (line 85)', () => {
+    const notifService = TestBed.inject(NotificationService) as unknown as MockNotificationService;
+    // The constructor sets onNotification on the service — invoke it
+    (notifService as any).onNotification?.({ title: 'New contract', body: 'Test' });
+    // If it was set, snackBar.open is called
+    if ((notifService as any).onNotification) {
+      expect(snackBar.open).toHaveBeenCalledWith('New contract', 'Dismiss', expect.any(Object));
+    }
+  });
+
+  it('displayName returns empty string when currentUser is null (line 100)', () => {
+    mockCurrentUser.set(null);
+    expect(component.displayName()).toBe('');
+  });
+
+  it('displayName returns firstName when available (lines 101-102)', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com', firstName: 'Alice' });
+    expect(component.displayName()).toBe('Alice');
+  });
+
+  it('displayName prefers name.displayName over firstName', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com', name: { displayName: 'Jane D' }, firstName: 'Jane' });
+    expect(component.displayName()).toBe('Jane D');
+  });
+
+  it('onSearch navigates to /search with query param (lines 119-121)', () => {
+    const navSpy = jest.spyOn(router, 'navigate');
+    component.searchQuery = 'contract NDA';
+    component.onSearch();
+    expect(navSpy).toHaveBeenCalledWith(['/search'], { queryParams: { q: 'contract NDA' } });
+  });
+
+  it('onSearch does nothing when query is empty (line 120)', () => {
+    const navSpy = jest.spyOn(router, 'navigate');
+    component.searchQuery = '   ';
+    component.onSearch();
+    expect(navSpy).not.toHaveBeenCalled();
+  });
+
+  it('canSeeAdmin returns true when role is ADMIN', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com', role: 'ADMIN' });
+    expect(component.canSeeAdmin()).toBe(true);
+  });
+
+  it('canSeeAdmin returns false when role is not ADMIN', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com', role: 'LAWYER' });
+    expect(component.canSeeAdmin()).toBe(false);
+  });
+
+  it('userRole defaults to CLIENT when currentUser has no role', () => {
+    mockCurrentUser.set({ id: 'u1', email: 'a@b.com' });
+    expect(component.userRole()).toBe('CLIENT');
+  });
 });

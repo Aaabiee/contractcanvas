@@ -143,4 +143,84 @@ describe('DocumentsComponent', () => {
     const btn = fixture.nativeElement.querySelector('button[disabled]');
     expect(btn).toBeTruthy();
   });
+
+  it('ngOnInit handles getMatters error gracefully (line 231)', () => {
+    const matterService = TestBed.inject(MatterService) as unknown as MockMatterService;
+    matterService.getMatters.mockReturnValue(throwError(() => new Error('network')));
+    // Re-init — should not throw
+    expect(() => component.ngOnInit()).not.toThrow();
+    expect(component.loadingMatters()).toBe(false);
+    expect(component.matters()).toEqual([]);
+  });
+
+  it('matterCtrl.valueChanges handles getDocuments error via catchError (line 244)', fakeAsync(() => {
+    docService.getDocuments.mockReturnValue(throwError(() => new Error('fail')));
+    component.matterCtrl.setValue('m1');
+    tick(50);
+    expect(component.documents()).toEqual([]);
+    expect(component.loading()).toBe(false);
+  }));
+
+  it('onFileSelected uploads file and updates documents on success (lines 254-268)', fakeAsync(() => {
+    component.matterCtrl.setValue('m1');
+    tick(50);
+
+    const mockFile = new File(['content'], 'test.pdf', { type: 'application/pdf' });
+    const mockInput = { files: [mockFile], value: 'test.pdf' } as unknown as HTMLInputElement;
+
+    component.onFileSelected(mockInput);
+    tick();
+
+    expect(docService.uploadDocument).toHaveBeenCalled();
+    expect(component.uploading()).toBe(false);
+    expect(snackBar.open).toHaveBeenCalledWith('"contract.pdf" uploaded.', 'OK', expect.any(Object));
+    expect(mockInput.value).toBe('');
+  }));
+
+  it('onFileSelected does nothing when no file selected', () => {
+    component.matterCtrl.setValue('m1');
+    const mockInput = { files: [], value: '' } as unknown as HTMLInputElement;
+    docService.uploadDocument.mockClear();
+    component.onFileSelected(mockInput);
+    expect(docService.uploadDocument).not.toHaveBeenCalled();
+  });
+
+  it('onFileSelected does nothing when no matter selected', () => {
+    component.matterCtrl.setValue(null);
+    const mockFile = new File(['content'], 'test.pdf', { type: 'application/pdf' });
+    const mockInput = { files: [mockFile], value: 'test.pdf' } as unknown as HTMLInputElement;
+    docService.uploadDocument.mockClear();
+    component.onFileSelected(mockInput);
+    expect(docService.uploadDocument).not.toHaveBeenCalled();
+  });
+
+  it('onFileSelected handles upload error and shows snackbar (lines 270-273)', fakeAsync(() => {
+    component.matterCtrl.setValue('m1');
+    tick(50);
+
+    docService.uploadDocument.mockReturnValue(throwError(() => ({ error: { message: 'File too large' } })));
+    const mockFile = new File(['content'], 'big.pdf', { type: 'application/pdf' });
+    const mockInput = { files: [mockFile], value: 'big.pdf' } as unknown as HTMLInputElement;
+
+    component.onFileSelected(mockInput);
+    tick();
+
+    expect(component.uploading()).toBe(false);
+    expect(snackBar.open).toHaveBeenCalledWith('File too large', 'Dismiss', expect.any(Object));
+    expect(mockInput.value).toBe('');
+  }));
+
+  it('onFileSelected shows default error message when error has no message', fakeAsync(() => {
+    component.matterCtrl.setValue('m1');
+    tick(50);
+
+    docService.uploadDocument.mockReturnValue(throwError(() => ({})));
+    const mockFile = new File(['content'], 'bad.pdf', { type: 'application/pdf' });
+    const mockInput = { files: [mockFile], value: 'bad.pdf' } as unknown as HTMLInputElement;
+
+    component.onFileSelected(mockInput);
+    tick();
+
+    expect(snackBar.open).toHaveBeenCalledWith('Upload failed.', 'Dismiss', expect.any(Object));
+  }));
 });
