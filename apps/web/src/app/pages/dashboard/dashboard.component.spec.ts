@@ -33,6 +33,14 @@ describe('DashboardComponent', () => {
   let snackBar: { open: jest.Mock };
   let router: Router;
 
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(async () => {
     dialog   = { open: jest.fn(() => ({ afterClosed: () => of(true) })) };
     snackBar = { open: jest.fn() };

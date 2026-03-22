@@ -48,6 +48,10 @@ describe('ContractDetailComponent', () => {
   let contractService: MockContractService;
   let paramMapSubject: Subject<any>;
 
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
   async function setup() {
     paramMapSubject = new Subject();
     await TestBed.configureTestingModule({
@@ -68,7 +72,10 @@ describe('ContractDetailComponent', () => {
     contractService = TestBed.inject(ContractService) as unknown as MockContractService;
   }
 
-  afterEach(() => TestBed.resetTestingModule());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
 
   it('should create', async () => {
     await setup();

@@ -55,6 +55,10 @@ describe('MatterDetailComponent', () => {
   let matterService: MockMatterService;
   let paramMapSubject: Subject<any>;
 
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
   async function setup() {
     paramMapSubject = new Subject();
     await TestBed.configureTestingModule({
@@ -78,7 +82,10 @@ describe('MatterDetailComponent', () => {
     matterService = TestBed.inject(MatterService) as unknown as MockMatterService;
   }
 
-  afterEach(() => TestBed.resetTestingModule());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
 
   it('should create', async () => {
     await setup();

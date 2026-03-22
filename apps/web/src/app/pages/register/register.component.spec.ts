@@ -28,6 +28,14 @@ describe('RegisterComponent', () => {
   let authService: MockAuthService;
   let router: Router;
 
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [RegisterComponent, NoopAnimationsModule],
