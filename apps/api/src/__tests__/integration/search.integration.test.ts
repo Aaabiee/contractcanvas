@@ -563,3 +563,122 @@ describe('GET /api/search (error propagation)', () => {
     );
   });
 });
+
+// ─── FTS with real tsvector columns (lines 35-37, 57-89) ─────────────────────
+
+describe('GET /api/search — FTS with real tsvector columns', () => {
+  // Add search_tsv columns so hasTsvector() returns true and the FTS path runs
+  beforeAll(async () => {
+    await db.$executeRawUnsafe(`ALTER TABLE "Matter" ADD COLUMN IF NOT EXISTS search_tsv tsvector`);
+    await db.$executeRawUnsafe(`ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS search_tsv tsvector`);
+    await db.$executeRawUnsafe(`ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS search_tsv tsvector`);
+    await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS matter_search_tsv_idx ON "Matter" USING gin(search_tsv)`);
+    await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS contract_search_tsv_idx ON "Contract" USING gin(search_tsv)`);
+    await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS document_search_tsv_idx ON "Document" USING gin(search_tsv)`);
+  });
+
+  async function populateTsvectors() {
+    await db.$executeRawUnsafe(`UPDATE "Matter" SET search_tsv = to_tsvector('english', coalesce(title, '') || ' ' || coalesce(description, '')) WHERE search_tsv IS NULL`);
+    await db.$executeRawUnsafe(`UPDATE "Contract" SET search_tsv = to_tsvector('english', coalesce(title, '')) WHERE search_tsv IS NULL`);
+    await db.$executeRawUnsafe(`UPDATE "Document" SET search_tsv = to_tsvector('english', coalesce(filename, '')) WHERE search_tsv IS NULL`);
+  }
+
+  it('uses FTS path with single-word query (lines 57, 62-89)', async () => {
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    await db.matter.create({
+      data: { title: 'Xylophone Integration FTS', organizationId: orgId, ownerId: userId },
+    });
+    await populateTsvectors();
+
+    const res = await request(app)
+      .get('/api/search?q=Xylophone&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.matters.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.matters[0].title).toContain('Xylophone');
+  });
+
+  it('uses FTS path with multi-word query — toTsQuery joins with & (lines 35-37)', async () => {
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    await db.matter.create({
+      data: { title: 'Quantum Litigation Matter', organizationId: orgId, ownerId: userId },
+    });
+    await populateTsvectors();
+
+    const res = await request(app)
+      .get('/api/search?q=Quantum+Litigation&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.q).toBe('Quantum Litigation');
+    expect(res.body.matters.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns empty results when tsQuery becomes empty after stripping (lines 58-59)', async () => {
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    const app = buildApp();
+    const { authHeader, orgHeader } = await seedAuth(app);
+
+    const res = await request(app)
+      .get('/api/search?q=' + encodeURIComponent('!!!@@@###') + '&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.matters).toHaveLength(0);
+    expect(res.body.contracts).toHaveLength(0);
+    expect(res.body.documents).toHaveLength(0);
+  });
+
+  it('FTS searches across contracts and documents too (lines 72-89)', async () => {
+    const { _resetFtsCache } = await import('../../routes/search.js');
+    _resetFtsCache();
+
+    const app = buildApp();
+    const { authHeader, orgHeader, orgId, userId } = await seedAuth(app);
+
+    const matter = await db.matter.create({
+      data: { title: 'Zyxwvut Parent Matter', organizationId: orgId, ownerId: userId },
+    });
+    await db.contract.create({
+      data: { title: 'Zyxwvut Contract NDA', organizationId: orgId, matterId: matter.id },
+    });
+    await db.document.create({
+      data: {
+        organizationId: orgId,
+        matterId: matter.id,
+        filename: 'Zyxwvut-report.pdf',
+        storageKey: 'fake/zyxwvut.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 100,
+      },
+    });
+    await populateTsvectors();
+
+    const res = await request(app)
+      .get('/api/search?q=Zyxwvut&mode=fts')
+      .set('Authorization', authHeader)
+      .set('X-Organization-Id', orgHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(2);
+    expect(res.body.matters.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.contracts.length).toBeGreaterThanOrEqual(1);
+  });
+});
