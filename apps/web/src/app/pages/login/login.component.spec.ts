@@ -66,6 +66,24 @@ describe('LoginComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('should render the hero banner spanning full width', () => {
+    const el = fixture.nativeElement as HTMLElement;
+    const img = el.querySelector('.hero-img') as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe('hero-banner.svg');
+    expect(img.getAttribute('alt')).toContain('ContractCanvas');
+  });
+
+  it('should render the login card below the banner', () => {
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.hero')).toBeTruthy();
+    expect(el.querySelector('.login-card')).toBeTruthy();
+    // card-wrapper comes after hero in the DOM
+    const hero = el.querySelector('.hero')!;
+    const card = el.querySelector('.card-wrapper')!;
+    expect(hero.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('should navigate to dashboard on successful login', () => {
     const navigateSpy = jest.spyOn(router, 'navigate');
     component.email = 'test@example.com';

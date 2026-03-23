@@ -1,91 +1,71 @@
-<!-- apps/web/src/app/pages/login/login.component.html -->
-
-<!-- 
-  The .login-wrapper handles centering the card and the "register" link.
-  The dark background is applied by the :host style in the CSS file. 
--->
-<div class="login-wrapper">
-
-  <!-- This is the main "floating" card -->
-  <mat-card class="login-card">
-    <mat-card-header>
-      <div class="logo-container">
-        <!-- Placeholder SVG Logo (Represents a "Document") -->
-        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="logo-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-      </div>
-      <mat-card-title>Welcome Back</mat-card-title>
-      <mat-card-subtitle>Please log in to your account</mat-card-subtitle>
-    </mat-card-header>
-
-    <mat-card-content>
-      <form (ngSubmit)="onLogin()" #loginForm="ngForm">
-
-        <!-- Email Field -->
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Email</mat-label>
-          <input 
-            matInput 
-            type="email" 
-            id="email" 
-            [(ngModel)]="email" 
-            name="email" 
-            placeholder="you@example.com"
-            required
-            email>
-          <mat-icon matPrefix>alternate_email</mat-icon>
-          <mat-error *ngIf="loginForm.controls['email']?.hasError('email')">
-            Please enter a valid email address
-          </mat-error>
-        </mat-form-field>
-
-        <!-- Password Field -->
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Password</mat-label>
-          <input 
-            matInput 
-            [type]="hidePassword ? 'password' : 'text'" 
-            id="password" 
-            [(ngModel)]="password" 
-            name="password"
-            placeholder="Password"
-            required>
-          <mat-icon matPrefix>lock</mat-icon>
-          
-          <button mat-icon-button matSuffix (click)="hidePassword = !hidePassword" [attr.aria-label]="'Hide password'" [attr.aria-pressed]="hidePassword" type="button">
-            <mat-icon>{{hidePassword ? 'visibility_off' : 'visibility'}}</mat-icon>
-          </button>
-          <mat-error *ngIf="loginForm.controls['password']?.hasError('required')">
-            Password is required
-          </mat-error>
-        </mat-form-field>
-
-        <!-- Forgot Password Link -->
-        <div class="options-container">
-          <a routerLink="/forgot-password" class="forgot-link">Forgot Password?</a>
-        </div>
-
-        <!-- Error Message -->
-        <div *ngIf="errorMessage" class="login-error-message">
-          {{ errorMessage }}
-        </div>
-
-        <!-- Submit Button -->
-        <button 
-          mat-raised-button 
-          color="primary" 
-          type="submit"
-          class="full-width login-button"
-          [disabled]="!loginForm.form.valid">
-          Sign In
-        </button>
-
-      </form>
-    </mat-card-content>
-  </mat-card>
-
-  <!-- Secondary action: Register link, placed outside the card -->
-  <div class="register-link-container">
-    No account? <a routerLink="/register" class="register-link">Create one</a>
+<div class="landing">
+  <!-- Full-width hero banner -->
+  <div class="hero">
+    <img src="hero-banner.svg" alt="ContractCanvas — Legal workflow, simplified" class="hero-img" />
   </div>
 
+  <!-- Login card overlaps the banner bottom -->
+  <div class="card-wrapper">
+    <mat-card class="login-card">
+      <mat-card-content>
+        <form (ngSubmit)="onLogin()" #loginForm="ngForm">
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Email</mat-label>
+            <input
+              matInput
+              type="email"
+              id="email"
+              [(ngModel)]="email"
+              name="email"
+              placeholder="you@example.com"
+              required
+              email>
+            <mat-icon matPrefix>alternate_email</mat-icon>
+            <mat-error *ngIf="loginForm.controls['email']?.hasError('email')">
+              Please enter a valid email address
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Password</mat-label>
+            <input
+              matInput
+              [type]="hidePassword ? 'password' : 'text'"
+              id="password"
+              [(ngModel)]="password"
+              name="password"
+              placeholder="Password"
+              required>
+            <mat-icon matPrefix>lock</mat-icon>
+            <button mat-icon-button matSuffix (click)="hidePassword = !hidePassword" [attr.aria-label]="'Toggle password'" [attr.aria-pressed]="hidePassword" type="button">
+              <mat-icon>{{hidePassword ? 'visibility_off' : 'visibility'}}</mat-icon>
+            </button>
+            <mat-error *ngIf="loginForm.controls['password']?.hasError('required')">
+              Password is required
+            </mat-error>
+          </mat-form-field>
+
+          <div class="options-row">
+            <a routerLink="/forgot-password" class="forgot-link">Forgot password?</a>
+          </div>
+
+          <div *ngIf="errorMessage" class="error-toast">{{ errorMessage }}</div>
+
+          <button
+            mat-raised-button
+            color="primary"
+            type="submit"
+            class="full-width sign-in-btn"
+            [disabled]="!loginForm.form.valid">
+            Sign In
+          </button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+
+    <p class="register-prompt">
+      No account? <a routerLink="/register" class="register-link">Create one</a>
+    </p>
+  </div>
 </div>

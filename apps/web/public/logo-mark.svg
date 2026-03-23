@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" role="img" aria-label="ContractCanvas">
+  <title>ContractCanvas</title>
+  <rect x="4" y="1" width="28" height="37" rx="4" fill="#1976d2"/>
+  <path d="M22 1 L32 11 H25 C23.34 11 22 9.66 22 8 Z" fill="#1256a0"/>
+  <line x1="11" y1="18" x2="25" y2="18" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <line x1="11" y1="23" x2="22" y2="23" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <line x1="11" y1="28" x2="23" y2="28" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.45"/>
+  <path d="M13 33 Q16.5 29.5 20 33 Q23.5 36.5 27 31" stroke="#64b5f6" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+</svg>

@@ -57,6 +57,13 @@ describe('RegisterComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('should render the logo-mark', () => {
+    const el = fixture.nativeElement as HTMLElement;
+    const logo = el.querySelector('.logo-mark') as HTMLImageElement;
+    expect(logo).toBeTruthy();
+    expect(logo.getAttribute('src')).toBe('logo-mark.svg');
+  });
+
   it('shows error when acceptTerms is false', () => {
     component.acceptTerms = false;
     component.onRegister();

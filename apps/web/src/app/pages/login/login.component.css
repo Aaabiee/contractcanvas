@@ -1,63 +1,59 @@
-/* apps/web/src/app/pages/login/login.component.css */
+/* ── Page shell ──────────────────────────────────────────────────────── */
 
-/* :host is the component's root element.
-  We make it fill the entire screen and apply the background.
-*/
 :host {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 100%;
-  height: 100%;
-  
-  /* This is the "Apple.com" dark background.
-    A subtle radial gradient from a dark blue-gray to nearly black. 
-  */
-  background-color: #111520;
-  background-image: radial-gradient(circle at 10% 10%, #1d2333 0%, #111520 80%);
+  min-height: 100%;
+  background: #ffffff;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  overflow-y: auto; /* Allow scrolling on small screens */
 }
 
-/* This wrapper stacks the card and the register link */
-.login-wrapper {
+.landing {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px;
+  min-height: 100vh;
+}
+
+/* ── Hero banner ────────────────────────────────────────────────────── */
+
+.hero {
+  width: 100%;
+  line-height: 0;          /* kill whitespace below img */
+  flex-shrink: 0;
+}
+
+.hero-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  min-height: 280px;       /* keep readable on ultra-wide */
+  object-fit: cover;
+}
+
+/* ── Card area — overlaps banner bottom ─────────────────────────────── */
+
+.card-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 420px;
+  padding: 0 20px;
+  margin-top: -72px;        /* pull card up into the banner fade */
+  position: relative;
+  z-index: 1;
 }
 
 .login-card {
   width: 100%;
-  max-width: 400px;
-  padding: 24px 32px; /* More padding */
-  border-radius: 12px; /* Softer corners */
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+  padding: 32px 36px 28px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   background: #ffffff;
 }
 
-.logo-container {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 16px;
-}
-
-.logo-icon {
-  color: var(--mat-primary-text-color, #3f51b5);
-}
-
-mat-card-title {
-  text-align: center;
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-mat-card-subtitle {
-  text-align: center;
-  font-size: 1rem;
-  color: #555;
-  margin-bottom: 24px;
-}
+/* ── Form ───────────────────────────────────────────────────────────── */
 
 mat-card-content {
   display: flex;
@@ -68,21 +64,19 @@ mat-card-content {
   width: 100%;
 }
 
-/* Give form fields a little space */
 mat-form-field {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
-.options-container {
+.options-row {
   display: flex;
   justify-content: flex-end;
-  width: 100%;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .forgot-link {
-  font-size: 0.875rem;
-  color: var(--mat-primary-text-color, #3f51b5);
+  font-size: 0.84rem;
+  color: #1976d2;
   text-decoration: none;
   font-weight: 500;
 }
@@ -91,39 +85,36 @@ mat-form-field {
   text-decoration: underline;
 }
 
-.login-error-message {
-  color: var(--mat-error-text-color, #f44336);
-  font-size: 0.9em;
+.error-toast {
+  color: #c62828;
+  font-size: 0.88rem;
   text-align: center;
-  margin-top: 8px;
   margin-bottom: 16px;
-  padding: 10px;
-  background: rgba(244, 67, 54, 0.1);
-  border-radius: 8px;
+  padding: 10px 14px;
+  background: #ffebee;
+  border-radius: 10px;
 }
 
-.login-button {
-  height: 48px; /* Taller, more clickable button */
+.sign-in-btn {
+  height: 48px;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
+  border-radius: 10px;
 }
 
-/* Remove the line from mat-card-actions */
-.login-actions {
-  display: none; 
-}
+/* ── Register prompt ────────────────────────────────────────────────── */
 
-/* Style for the link below the card */
-.register-link-container {
+.register-prompt {
   margin-top: 24px;
   text-align: center;
-  color: #999; /* Subtle on the dark background */
+  color: #777;
+  font-size: 0.9rem;
 }
 
 .register-link {
-  color: #fff; /* Bright on the dark background */
+  color: #1976d2;
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .register-link:hover {

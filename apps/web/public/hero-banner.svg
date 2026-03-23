@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 520" fill="none" preserveAspectRatio="xMidYMid slice" role="img" aria-label="ContractCanvas">
+  <title>ContractCanvas</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1440" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="50%" stop-color="#0d2847"/>
+      <stop offset="100%" stop-color="#0a1628"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="40%">
+      <stop offset="0%" stop-color="#1565c0" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#0d2847" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="docA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.09)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.03)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Deep background -->
+  <rect width="1440" height="520" fill="url(#sky)"/>
+  <rect width="1440" height="520" fill="url(#glow)"/>
+
+  <!-- Grid of faint dots -->
+  <g opacity="0.04">
+    <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+      <circle cx="20" cy="20" r="1" fill="#fff"/>
+    </pattern>
+    <rect width="1440" height="520" fill="url(#dots)"/>
+  </g>
+
+  <!-- Floating document shapes — left cluster -->
+  <g opacity="0.07">
+    <rect x="80" y="60" width="72" height="96" rx="6" fill="#fff" transform="rotate(-12 116 108)"/>
+    <rect x="160" y="120" width="56" height="74" rx="5" fill="#fff" transform="rotate(8 188 157)"/>
+    <rect x="40" y="200" width="48" height="64" rx="4" fill="#fff" transform="rotate(-6 64 232)"/>
+  </g>
+
+  <!-- Floating document shapes — right cluster -->
+  <g opacity="0.07">
+    <rect x="1240" y="50" width="68" height="90" rx="6" fill="#fff" transform="rotate(10 1274 95)"/>
+    <rect x="1300" y="160" width="52" height="70" rx="5" fill="#fff" transform="rotate(-8 1326 195)"/>
+    <rect x="1180" y="180" width="44" height="58" rx="4" fill="#fff" transform="rotate(15 1202 209)"/>
+  </g>
+
+  <!-- Scattered small docs across the middle -->
+  <g opacity="0.05">
+    <rect x="350" y="40" width="36" height="48" rx="3" fill="#fff" transform="rotate(5 368 64)"/>
+    <rect x="500" y="360" width="32" height="42" rx="3" fill="#fff" transform="rotate(-10 516 381)"/>
+    <rect x="900" y="30" width="40" height="52" rx="3" fill="#fff" transform="rotate(-7 920 56)"/>
+    <rect x="1050" y="340" width="34" height="46" rx="3" fill="#fff" transform="rotate(12 1067 363)"/>
+  </g>
+
+  <!-- Central hero document icon -->
+  <g transform="translate(668, 80)">
+    <!-- Shadow -->
+    <rect x="8" y="10" width="88" height="116" rx="10" fill="rgba(0,0,0,0.3)"/>
+    <!-- Document body -->
+    <rect x="0" y="0" width="88" height="116" rx="10" fill="url(#docA)" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+    <!-- Folded corner -->
+    <path d="M56 0 L88 32 H66 C60.48 32 56 27.52 56 22 Z" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+    <!-- Text lines -->
+    <line x1="18" y1="50" x2="62" y2="50" stroke="rgba(255,255,255,0.4)" stroke-width="3" stroke-linecap="round"/>
+    <line x1="18" y1="62" x2="52" y2="62" stroke="rgba(255,255,255,0.25)" stroke-width="3" stroke-linecap="round"/>
+    <line x1="18" y1="74" x2="56" y2="74" stroke="rgba(255,255,255,0.18)" stroke-width="3" stroke-linecap="round"/>
+    <!-- Signature flourish -->
+    <path d="M22 92 Q32 82 42 92 Q52 102 64 86" stroke="#42a5f5" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <!-- Checkmark seal -->
+    <circle cx="66" cy="96" r="12" fill="#1976d2" opacity="0.8"/>
+    <polyline points="60,96 64,100 72,90" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="720" y="260" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="800" letter-spacing="-1">
+    <tspan fill="#ffffff">Contract</tspan><tspan fill="#64b5f6">Canvas</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="720" y="295" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" fill="rgba(255,255,255,0.5)" letter-spacing="3" font-weight="400">
+    LEGAL WORKFLOW, SIMPLIFIED
+  </text>
+
+  <!-- Decorative line separator -->
+  <line x1="640" y1="320" x2="800" y2="320" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+
+  <!-- Bottom fade to white — this blends into the card below -->
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="400" width="1440" height="120" fill="url(#fade)"/>
+</svg>
