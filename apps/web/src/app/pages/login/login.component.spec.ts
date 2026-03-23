@@ -66,12 +66,12 @@ describe('LoginComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should render the branded banner', () => {
+  it('should render the ContractCanvas logo', () => {
     const compiled = fixture.nativeElement as HTMLElement;
-    const banner = compiled.querySelector('.banner-img') as HTMLImageElement;
-    expect(banner).toBeTruthy();
-    expect(banner.getAttribute('src')).toBe('login-banner.svg');
-    expect(banner.getAttribute('alt')).toBe('ContractCanvas');
+    const logo = compiled.querySelector('.logo-img') as HTMLImageElement;
+    expect(logo).toBeTruthy();
+    expect(logo.getAttribute('src')).toBe('logo.svg');
+    expect(logo.getAttribute('alt')).toBe('ContractCanvas');
   });
 
   it('should navigate to dashboard on successful login', () => {
