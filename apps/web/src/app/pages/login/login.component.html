@@ -3,13 +3,9 @@
 <div class="login-wrapper">
 
   <mat-card class="login-card">
-    <mat-card-header>
-      <div class="logo-container">
-        <img src="logo.svg" alt="ContractCanvas" class="logo-img" width="200" height="48" />
-      </div>
-      <mat-card-title>Welcome Back</mat-card-title>
-      <mat-card-subtitle>Sign in to your account</mat-card-subtitle>
-    </mat-card-header>
+    <div class="banner">
+      <img src="login-banner.svg" alt="ContractCanvas" class="banner-img" width="400" height="140" />
+    </div>
 
     <mat-card-content>
       <form (ngSubmit)="onLogin()" #loginForm="ngForm">

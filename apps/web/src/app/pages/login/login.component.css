@@ -29,40 +29,28 @@
 .login-card {
   width: 100%;
   max-width: 400px;
-  padding: 24px 32px; /* More padding */
-  border-radius: 12px; /* Softer corners */
+  padding: 0;
+  border-radius: 12px;
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
   background: #ffffff;
+  overflow: hidden;
 }
 
-.logo-container {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 24px;
+.banner {
+  display: block;
+  line-height: 0; /* remove whitespace below img */
 }
 
-.logo-img {
-  height: 48px;
-  width: auto;
-}
-
-mat-card-title {
-  text-align: center;
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-mat-card-subtitle {
-  text-align: center;
-  font-size: 1rem;
-  color: #555;
-  margin-bottom: 24px;
+.banner-img {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 mat-card-content {
   display: flex;
   flex-direction: column;
+  padding: 24px 32px 28px;
 }
 
 .full-width {
