@@ -36,17 +36,6 @@
   overflow: hidden;
 }
 
-.banner {
-  display: block;
-  line-height: 0; /* remove whitespace below img */
-}
-
-.banner-img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
 mat-card-content {
   display: flex;
   flex-direction: column;

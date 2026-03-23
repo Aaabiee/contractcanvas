@@ -66,14 +66,6 @@ describe('LoginComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should render the branded banner', () => {
-    const compiled = fixture.nativeElement as HTMLElement;
-    const banner = compiled.querySelector('.banner-img') as HTMLImageElement;
-    expect(banner).toBeTruthy();
-    expect(banner.getAttribute('src')).toBe('login-banner.svg');
-    expect(banner.getAttribute('alt')).toBe('ContractCanvas');
-  });
-
   it('should navigate to dashboard on successful login', () => {
     const navigateSpy = jest.spyOn(router, 'navigate');
     component.email = 'test@example.com';

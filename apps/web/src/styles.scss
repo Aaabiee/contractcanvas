@@ -31,8 +31,6 @@ body {
   color: var(--mat-sys-on-surface);
   font: var(--mat-sys-body-medium);
   margin: 0;
-  display: grid;
-  place-items: center;
   min-height: 100%;
   transition: background-color .2s ease, color .2s ease;
 }
@@ -46,7 +44,8 @@ html, body {
 }
 
 app-root {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   width: 100%;
 }
