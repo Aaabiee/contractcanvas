@@ -7,7 +7,7 @@ test.describe('Health & API', () => {
     const res = await request.get(`${API_URL}/health`);
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
-    expect(body.status).toBe('ok');
+    expect(body.ok).toBe(true);
   });
 
   test('API returns 401 for protected routes without token', async ({ request }) => {

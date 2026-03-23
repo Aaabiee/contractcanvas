@@ -9,5 +9,5 @@ import { RouterOutlet } from '@angular/router';
   styleUrls: ['./app.component.scss']
 })
 export class AppComponent {
-  readonly title = signal('cc-web');
+  readonly title = signal('ccanvas');
 }

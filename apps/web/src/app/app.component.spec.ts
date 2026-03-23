@@ -19,6 +19,6 @@ describe('AppComponent', () => {
   it(`should have the 'cc-web' title`, () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    expect(app.title()).toEqual('cc-web');
+    expect(app.title()).toEqual('ccanvas');
   });
 });

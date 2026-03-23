@@ -44,9 +44,13 @@ test.describe('Security Headers & OWASP', () => {
     const res = await request.post(`${API_URL}/api/auth/forgot-password`, {
       data: { email: 'nonexistent@nowhere.com' },
     });
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
+    // 200 = normal response, 429 = rate-limited; both are acceptable because
+    // neither status leaks whether the email exists in the system.
+    expect([200, 429]).toContain(res.status());
+    if (res.status() === 200) {
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+    }
   });
 
   test('protected routes reject requests without auth', async ({ request }) => {
